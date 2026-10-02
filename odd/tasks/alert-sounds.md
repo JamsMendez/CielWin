@@ -162,6 +162,9 @@ the document are pre-rewrite and no longer exist.
 
 - User confirmed both imported sounds play (2026-10-02).
 
+- Remove checked by hand (2026-10-02): `alert-sound removed kind=failed|warning` traced, both settings keys empty,
+  sounds folder empty.
+
 ## Next step
 
-Remove entries and mute toggle by hand (user), then merge decision.
+Merge decision: assess the unreviewed slice since `64d538b`; optionally squash stage-1 commits that no longer build.
