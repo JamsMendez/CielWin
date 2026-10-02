@@ -39,13 +39,15 @@ Strict TDD: enabled (source: user global CLAUDE.md). Runner: `dotnet test CielWi
 (xunit). Scene JS tests need `node` (v24 available).
 
 ## Delivery
-Forecast: well over 400 authored changed lines (mostly ported code). Strategy: `ask-on-risk`;
-chain strategy pending user answer. No remote configured.
+Forecast: well over 400 authored changed lines (mostly ported code). Strategy: `ask-on-risk`,
+chain strategy `feature-branch-chain` (user choice): slices chain on `feat/cielwin-extraction`,
+which merges to `main` once only when the app is functional. No remote configured yet.
+Slice boundaries are recorded per task below once PRs exist.
 
 ## Tasks
 - [x] T1 Scaffold: `CielWin.sln`, `CielWin.Interop`, `CielWin.App` (WinExe, asInvoker manifest),
       test projects, empty build green. Route: inline (mechanical).
-- [ ] T2 Interop HTTP: server with alert + scene routes only, protocols, token file, tests.
+- [x] T2 Interop HTTP: server with alert + scene routes only, protocols, token file, tests.
       Route: delegated writer.
 - [ ] T3 Interop Win32: attach-only wallpaper host, composition overlay surface, mini window,
       fullscreen detector, tests. Route: delegated writer.
@@ -65,6 +67,7 @@ chain strategy pending user answer. No remote configured.
 
 ## Progress
 - Repo initialized on `main` (`03d0bd0`), branch `feat/cielwin-extraction`.
+- T2 done: RED = compile failures (ported tests, no production types); GREEN = 144 tests (Interop.Tests 122, App.Tests 22), 0 failed, 0 skipped; build 0 warnings.
 
 ## Next step
 T1.
