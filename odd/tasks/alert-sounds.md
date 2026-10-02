@@ -153,6 +153,13 @@ the document are pre-rewrite and no longer exist.
     tests pass.
 - Assess `64d538b..d6609f4`: medium, 193 lines, `review_due` false (`under_budget`); pending in the next slice.
 
+- Side request (user, 2026-10-02): default HTTP port 47811 -> 43811 (`AlertHttpProtocol.DefaultPort`, README, two
+  default-port tests). RED: `AlertHttpProtocolTests` expected 43811, actual 47811. GREEN: App 589, Interop 189 + 20
+  skipped; build 0 warnings. Commit `4df47a3`. Settings files with an explicit port keep it.
+- Manual check started: user imported both m4a sounds via the tray (`alert-sound imported kind=failed|warning`,
+  files `failed.m4a`/`warning.m4a` in the sounds folder); test alerts failed then warning on 43811 answered 202,
+  no `alert sound-skipped|failed` traced.
+
 ## Next step
 
-User's manual check of import/play/remove/menu visibility.
+User confirms both sounds play, then remove entries and mute toggle by hand.
