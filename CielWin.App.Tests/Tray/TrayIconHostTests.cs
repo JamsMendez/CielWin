@@ -112,4 +112,94 @@ public sealed class TrayIconHostTests
 
         Assert.Equal([16, 20, 24, 32, 48, 256], sizes);
     }
+
+    /// <summary>
+    /// The 16, 20 and 24 px frames get a contrast pass in tools/tray-icon/render-raphael-mini.mjs so the
+    /// figure reads on a light taskbar. Thresholds come from measured values with wide margin:
+    /// <list type="bullet">
+    /// <item>Mostly opaque pixels (alpha &gt;= 192) cover at least 25% of the frame: measured 43-48% after
+    /// the pass, 2% before it (the averaged disc was a pale, half-transparent blur).</item>
+    /// <item>A dark rim: at least one dark (luma &lt; 80), solid (alpha &gt;= 128) pixel per pixel of width
+    /// that touches the transparent outside: measured 49/56/67 after, 0 before.</item>
+    /// <item>Still a figure, not a filled square: the four corners stay fully transparent and opaque pixels
+    /// cover at most 75% of the frame.</item>
+    /// </list>
+    /// </summary>
+    [Fact]
+    public void TheSmallTrayIconFrames_KeepTheirContrastPass()
+    {
+        using var stream = typeof(TrayIconHost).Assembly.GetManifestResourceStream(TrayIconHost.IconResourceName);
+        Assert.NotNull(stream);
+
+        var frames = ReadSmallFrames(stream);
+
+        Assert.Equal([16, 20, 24], frames.Select(frame => frame.Size));
+        foreach (var (size, pixels) in frames)
+        {
+            int Alpha(int x, int y) => x < 0 || y < 0 || x >= size || y >= size ? 0 : pixels[(y * size) + x].A;
+
+            var opaque = pixels.Count(pixel => pixel.A >= 192);
+            var rim = 0;
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var (r, g, b, a) = pixels[(y * size) + x];
+                    var luma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+                    var touchesOutside = Math.Min(Math.Min(Alpha(x + 1, y), Alpha(x - 1, y)), Math.Min(Alpha(x, y + 1), Alpha(x, y - 1))) < 64;
+                    if (a >= 128 && luma < 80 && touchesOutside)
+                    {
+                        rim++;
+                    }
+                }
+            }
+
+            var area = size * size;
+            Assert.True(opaque >= area * 0.25, $"{size} px: {opaque} of {area} pixels mostly opaque (pale frame)");
+            Assert.True(opaque <= area * 0.75, $"{size} px: {opaque} of {area} pixels mostly opaque (filled frame)");
+            Assert.True(rim >= size, $"{size} px: {rim} dark rim pixels, expected at least {size}");
+            Assert.Equal([0, 0, 0, 0], new[] { Alpha(0, 0), Alpha(size - 1, 0), Alpha(0, size - 1), Alpha(size - 1, size - 1) });
+        }
+    }
+
+    /// <summary>
+    /// Decodes the icon frames of 24 px and below. They are 32-bit BMP entries: a BITMAPINFOHEADER, then
+    /// bottom-up BGRA rows (the AND mask after them is ignored; the alpha channel is authoritative).
+    /// </summary>
+    private static List<(int Size, (byte R, byte G, byte B, byte A)[] Pixels)> ReadSmallFrames(Stream stream)
+    {
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        var data = memory.ToArray();
+
+        var frames = new List<(int, (byte, byte, byte, byte)[])>();
+        var count = BitConverter.ToUInt16(data, 4);
+        for (var i = 0; i < count; i++)
+        {
+            var entry = 6 + (16 * i);
+            var size = data[entry] == 0 ? 256 : data[entry];
+            if (size > 24)
+            {
+                continue;
+            }
+
+            var offset = BitConverter.ToInt32(data, entry + 12);
+            var bits = offset + BitConverter.ToInt32(data, offset);
+            Assert.Equal(32, BitConverter.ToUInt16(data, offset + 14));
+            var pixels = new (byte, byte, byte, byte)[size * size];
+            for (var y = 0; y < size; y++)
+            {
+                var row = bits + ((size - 1 - y) * size * 4);
+                for (var x = 0; x < size; x++)
+                {
+                    var p = row + (x * 4);
+                    pixels[(y * size) + x] = (data[p + 2], data[p + 1], data[p], data[p + 3]);
+                }
+            }
+
+            frames.Add((size, pixels));
+        }
+
+        return frames;
+    }
 }
