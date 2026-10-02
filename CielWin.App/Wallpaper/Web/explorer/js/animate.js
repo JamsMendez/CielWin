@@ -170,9 +170,11 @@ function buildRingCaches(cx, cy, basis, dpr) {
 
     return { content, size, radius };
   });
+  buildCombinedLightingMask(basis, dpr);
+  // Committed LAST: the frame loop rebuilds whenever this key differs from the current basis/DPR, so a
+  // mask build that throws above must leave the key stale and be retried next frame, not look built.
   ringCacheBasis = basis;
   ringCacheDpr = dpr;
-  buildCombinedLightingMask(basis, dpr);
 }
 
 // IDL-12 perf: ONE screen-fixed lighting mask covering every rotating ring's annulus, replacing

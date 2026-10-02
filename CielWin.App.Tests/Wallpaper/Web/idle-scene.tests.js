@@ -66,7 +66,10 @@ if (SCRIPT_FILES.length === 0) {
 // translate/setTransform are the ONLY transform-affecting calls anywhere in the call chain this
 // harness cares about (the shared overlay's own tile offset translate, and js/see-through-hook.js's
 // own draw call).
-function make2dContext() {
+function make2dContext(options) {
+  options = options || {};
+  // Test seam: the first N createConicGradient calls throw, to prove a failed lighting-mask build is retried.
+  var conicGradientFailures = options.conicGradientFailures || 0;
   var slots = {};
   var gradient = { addColorStop: function () {} };
   var stack = [];
@@ -76,6 +79,9 @@ function make2dContext() {
       get: function (target, prop) {
         if (prop === "measureText") {
           return function (text) { return { width: String(text).length * 8 }; };
+        }
+        if (prop === "createConicGradient" && conicGradientFailures > 0) {
+          return function () { conicGradientFailures--; throw new Error("injected createConicGradient failure"); };
         }
         if (prop === "createRadialGradient" || prop === "createLinearGradient" || prop === "createConicGradient") {
           return function () { return gradient; };
@@ -128,7 +134,7 @@ function makeCanvasElement(ctx2d) {
 // Loads a FRESH copy of the real multi-file page into its own sandbox, mirroring a fresh page load.
 function loadPage(options) {
   options = options || {};
-  var made = make2dContext();
+  var made = make2dContext(options);
   var ctx2d = made.context;
   var sceneCanvas = makeCanvasElement(ctx2d);
   var postedMessages = [];
@@ -647,6 +653,48 @@ test("pause/resume host messages: a paused page draws and arms nothing, resume r
 
 test("the mini variant ignores the pause message (the corner window is always visible)", function () {
   pauseResumeChecks.checkMiniVariantIgnoresPause(loadPage);
+});
+
+// ---- Review follow-ups (T5b) ------------------------------------------------------------------------
+
+// buildRingCaches used to commit its "built for this basis/DPR" key BEFORE the combined lighting mask was
+// built: a mask failure left a key that said "up to date" next to a missing (first build) or stale
+// (resize) mask, so the next frame never rebuilt and drawCombinedLightingMask failed every frame.
+test("a failed lighting-mask build is retried on the next frame instead of being masked by a committed cache key", function () {
+  var page = loadPage({ innerWidth: 1000, innerHeight: 500, conicGradientFailures: 1 });
+
+  page.sandbox.renderFrame(0); // the mask build throws once; renderFrame's scene stage reports it
+  assert.strictEqual(page.consoleErrorCalls.length, 1, "expected exactly the one injected mask failure");
+  page.sandbox.renderFrame(16);
+
+  assert.strictEqual(vm.runInContext("combinedLightingMask !== null", page.sandbox), true,
+    "expected the next frame to rebuild the mask after the failed attempt");
+  assert.strictEqual(page.consoleErrorCalls.length, 1,
+    "expected no further render failures once the retry built the mask");
+});
+
+// earth.js sized the planet's flare from sceneBasis (the full-scene fit) while the planet itself is
+// sized from the ACTIVE basis, so in the mini window the flare was mis-scaled relative to the planet.
+test("the planet's flare is sized from the active basis, so mini keeps it proportional to the planet", function () {
+  var page = loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" });
+  var flareColor = vm.runInContext("EARTH_FLARE_COLOR", page.sandbox);
+  var flares = [];
+  var originalSpark = page.sandbox.drawSpark;
+  page.sandbox.drawSpark = function (context, x, y, size, intensity, color, rayLength) {
+    if (color === flareColor) flares.push({ size: size, rayLength: rayLength });
+    return originalSpark.apply(this, arguments);
+  };
+
+  page.sandbox.renderFrame(200);
+
+  assert.strictEqual(flares.length, 1, "expected one earth flare spark");
+  var basis = vm.runInContext("activeSceneBasis()", page.sandbox);
+  var sizeFraction = vm.runInContext("EARTH_FLARE_SIZE_FRACTION", page.sandbox);
+  var rayFraction = vm.runInContext("EARTH_FLARE_RAY_LENGTH_FRACTION", page.sandbox);
+  assert.ok(Math.abs(flares[0].size - basis * sizeFraction) < 1e-6,
+    "expected flare size " + basis * sizeFraction + " (active basis), got " + flares[0].size);
+  assert.ok(Math.abs(flares[0].rayLength - basis * rayFraction) < 1e-6,
+    "expected flare ray length " + basis * rayFraction + " (active basis), got " + flares[0].rayLength);
 });
 
 // ---- Run ----------------------------------------------------------------------------------------

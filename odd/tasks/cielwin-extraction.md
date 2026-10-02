@@ -54,7 +54,7 @@ Slice boundaries are recorded per task below once PRs exist.
 - [x] T4 Settings: trimmed settings model + file + store, new mode names, tests. Route: delegated writer.
 - [x] T5 Scene + alert layer: alert parser/queue/tile layout, WebView2 layer controller,
       scene/alert web assets, node scene tests. Route: delegated writer.
-- [ ] T5b Review follow-ups (user request): fix the actionable review warnings listed under
+- [x] T5b Review follow-ups (user request): fix the actionable review warnings listed under
       Follow-ups, with tests. Route: delegated writer.
 - [ ] T6 Mini: controller, browser, placement with `Previous`, failure policy, tests.
       Route: delegated writer.
@@ -112,22 +112,32 @@ Slice boundaries are recorded per task below once PRs exist.
   range stays unreviewed and the triggering findings are unknown. Pending: `4dc7414..12dc958`,
   `12dc958..cee39af`, `cee39af..c1ccbd2`.
 
+- T5b done (commits in `git log`: `fix(interop)`, `fix(settings)`, `fix(alerts)`, `fix(scene)`): each fix test-first with
+  observed RED. Fixed: mini window releases HWND/class on failed composition setup (and on CreateWindow failure);
+  `MtaActionThread.Invoke` returns bool (+ optional timeout); `SettingsFile.TryLoad` -> `SettingsLoadResult{Settings,Status,CanSave}`
+  (T7 must skip saves when `!CanSave`) and atomic temp+`File.Replace` save; abandoned-mutex test; `AlertLayerPreloadState`
+  bounded recovery (`RuntimeFailed`, 2 per 10 min, `GaveUp`, host change refills), 30 s navigation timeout checked by the poll,
+  `Failed()` no longer drops a showing alert, `MiniProcessFailurePolicy` ported (T6 reuses it); explorer/idle lighting-mask
+  cache key committed after the mask build; explorer/idle earth flare uses `activeSceneBasis()`. Not defects: scene
+  save/restore (every scene catch already calls `resetCanvasStateForFrame`), "nothing recreates the layer" (the 250 ms poll
+  already recreated it, only the cap was missing).
+
 ## Follow-ups (non-blocking review advice)
-- `AlertHttpTokenFile` abandoned-mutex path (`AlertHttpTokenFile.cs:137-144`) has no test.
-- R3-001 `Win32MiniSceneWindow.cs:84-109`: a failed DirectComposition setup returns false but leaves
+- FIXED (T5b) `AlertHttpTokenFile` abandoned-mutex path (`AlertHttpTokenFile.cs:137-144`) has no test.
+- FIXED (T5b) R3-001 `Win32MiniSceneWindow.cs:84-109`: a failed DirectComposition setup returns false but leaves
   the created HWND alive (no cleanup in the catch). Fix when T6/T7 wire mini recovery.
-- R3-002 `MtaActionThread.cs:62-69`: `Invoke` silently returns after a 5 s wait timeout; caller
+- FIXED (T5b) R3-002 `MtaActionThread.cs:62-69`: `Invoke` silently returns after a 5 s wait timeout; caller
   cannot tell the work never ran. Surface it (diagnostic or bool) in T7.
 - R3-003 `Win32SceneWallpaperHostRealAttachTests.cs:406-438`: real-desktop test weakness (warning).
 - R3-004 `ISceneWallpaperHost.cs:14-19`: doc suggestion.
-- T4 R3-001 `SettingsFile.cs:38-41`: a transient read failure silently yields defaults; a later
+- FIXED (T5b; T7 consumes `TryLoad`/`CanSave`) T4 R3-001 `SettingsFile.cs:38-41`: a transient read failure silently yields defaults; a later
   save (scene switch, Alt+M) would then overwrite the user's file. Fix in T7 (report + avoid save-over).
-- T4 R3-002 `SettingsFile.cs:98`: `File.WriteAllText` is not atomic; use temp file + replace. Fix in T7.
+- FIXED (T5b) T4 R3-002 `SettingsFile.cs:98`: `File.WriteAllText` is not atomic; use temp file + replace. Fix in T7.
 - T4 R3-003 `SynchronizedSettingsStoreTests.cs:15-52`: test suggestion.
-- T5 `WebViewAlertLayerController.cs:374-375` (R3/R4): after a WebView2 process failure the layer is torn
+- FIXED (T5b) T5 `WebViewAlertLayerController.cs:374-375` (R3/R4): after a WebView2 process failure the layer is torn
   down and nothing recreates it. `:307`: navigation has no timeout. Fix in T7 (recovery like the mini).
-- T5 `processing/js/main.js:71-108`: a throwing scene layer leaves canvas save/restore unbalanced.
-- T5 `explorer/js/animate.js:175-177` cache key committed before mask build; `earth.js:318-319` mini basis.
+- NOT A DEFECT (T5b) T5 `processing/js/main.js:71-108`: a throwing scene layer leaves canvas save/restore unbalanced.
+- FIXED (T5b) T5 `explorer/js/animate.js:175-177` cache key committed before mask build (and idle); `earth.js:318-319` mini basis (and idle). Unflagged same-pattern: `rings.js` uses `sceneBasis(W,H)` in mini for ruler/paragraph/outer ring sizes (left as is).
 
 ## Next step
 T6 Mini.

@@ -315,7 +315,10 @@ function drawEarth(context, cx, cy, radius, longitude, timeSeconds) {
   const blinkPhase = (t / EARTH_FLARE_BLINK_PERIOD_SECONDS) * TAU;
   const blinkWave = (Math.sin(blinkPhase) + 1) / 2; // 0..1, smooth and periodic
   const flareIntensity = mix(EARTH_FLARE_BLINK_MIN_INTENSITY, 1, blinkWave);
-  const flareSize = sceneBasis(W, H) * EARTH_FLARE_SIZE_FRACTION;
-  const rayLength = sceneBasis(W, H) * EARTH_FLARE_RAY_LENGTH_FRACTION;
+  // activeSceneBasis, not sceneBasis: the planet radius is derived from the basis the scene is actually
+  // drawn with (the mini fit in the mini variant), and the flare has to stay proportional to it.
+  const flareBasis = activeSceneBasis();
+  const flareSize = flareBasis * EARTH_FLARE_SIZE_FRACTION;
+  const rayLength = flareBasis * EARTH_FLARE_RAY_LENGTH_FRACTION;
   drawSpark(context, cx, cy - radius * 0.98, flareSize, flareIntensity, EARTH_FLARE_COLOR, rayLength);
 }
