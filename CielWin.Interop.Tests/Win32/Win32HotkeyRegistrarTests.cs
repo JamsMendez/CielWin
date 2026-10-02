@@ -58,6 +58,42 @@ public sealed class Win32HotkeyRegistrarTests
         Assert.True(handled);
     }
 
+    /// <summary>
+    /// The swallowed failure is still reported: the callback gets the exception TYPE name only (a
+    /// message can hold an absolute path), and later presses are still delivered.
+    /// </summary>
+    [Fact]
+    public void AHandlerThatThrows_IsReportedByTypeName_AndLaterPressesStillArrive()
+    {
+        var failures = new List<string>();
+        using var registrar = new Win32HotkeyRegistrar(failures.Add);
+        var pressed = new List<int>();
+        var fail = true;
+        registrar.Pressed += id =>
+        {
+            if (fail) throw new InvalidOperationException("C:\\secret\\path");
+            pressed.Add(id);
+        };
+
+        registrar.HandleMessage(Win32HotkeyRegistrar.WmHotkey, 1);
+        fail = false;
+        registrar.HandleMessage(Win32HotkeyRegistrar.WmHotkey, 2);
+
+        Assert.Equal(["InvalidOperationException"], failures);
+        Assert.Equal([2], pressed);
+    }
+
+    [Fact]
+    public void AFailureCallbackThatThrows_DoesNotEscapeTheWindowProcedure()
+    {
+        using var registrar = new Win32HotkeyRegistrar(_ => throw new IOException("trace sink down"));
+        registrar.Pressed += _ => throw new InvalidOperationException("boom");
+
+        var handled = registrar.HandleMessage(Win32HotkeyRegistrar.WmHotkey, 1);
+
+        Assert.True(handled);
+    }
+
     [Fact]
     public void Register_AfterDispose_ReturnsFalse()
     {

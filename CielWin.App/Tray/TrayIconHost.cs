@@ -6,7 +6,8 @@ namespace CielWin.App.Tray;
 /// <summary>
 /// Thin WinForms <see cref="NotifyIcon"/>/<see cref="ContextMenuStrip"/> wrapper, the sole owner of
 /// the tray icon and its menu. Holds no behavior beyond forwarding clicks to
-/// <see cref="TrayMenuController"/>; the rest needs a live notification area and is verified by hand.
+/// <see cref="TrayMenuController"/> through <see cref="Guarded"/>; the rest needs a live notification
+/// area and is verified by hand.
 /// Constructed on the WPF UI thread, whose dispatcher loop pumps it.
 /// </summary>
 public sealed class TrayIconHost : IDisposable
@@ -16,14 +17,14 @@ public sealed class TrayIconHost : IDisposable
     private readonly ContextMenuStrip _menu;
     private readonly List<Image> _images = [];
 
-    public TrayIconHost(TrayMenuController controller)
+    public TrayIconHost(TrayMenuController controller, Action<string> trace)
     {
         var modeItem = new ToolStripMenuItem("Wallpaper mode") { Image = Track(TrayGlyphs.Render(TrayGlyphs.Mode)) };
         var modeItems = new List<(WallpaperMode Mode, ToolStripMenuItem Item)>();
         foreach (var mode in TrayMenuController.Modes)
         {
             var item = new ToolStripMenuItem(ModeLabel(mode));
-            item.Click += (_, _) => controller.SelectMode(mode);
+            item.Click += Guarded("mode", () => controller.SelectMode(mode), trace);
             modeItem.DropDownItems.Add(item);
             modeItems.Add((mode, item));
         }
@@ -33,13 +34,13 @@ public sealed class TrayIconHost : IDisposable
         foreach (var scene in TrayMenuController.Scenes)
         {
             var item = new ToolStripMenuItem(SceneLabel(scene));
-            item.Click += (_, _) => controller.SelectScene(scene);
+            item.Click += Guarded("scene", () => controller.SelectScene(scene), trace);
             sceneItem.DropDownItems.Add(item);
             sceneItems.Add((scene, item));
         }
 
         var exitItem = new ToolStripMenuItem("Exit") { Image = Track(TrayGlyphs.Render(TrayGlyphs.Exit)) };
-        exitItem.Click += (_, _) => controller.Exit();
+        exitItem.Click += Guarded("exit", controller.Exit, trace);
 
         _menu = new ContextMenuStrip();
         var items = new Dictionary<TrayMenuEntry, ToolStripItem>
@@ -108,6 +109,30 @@ public sealed class TrayIconHost : IDisposable
     };
 
     public static string SceneLabel(WallpaperScene scene) => scene.ToString();
+
+    /// <summary>
+    /// A click handler that runs <paramref name="click"/> and never lets it throw: the click arrives as
+    /// a raw window message inside the WPF dispatcher loop, where an escaping exception ends the app.
+    /// A failure is traced with the exception TYPE only (a message can hold a path); a throwing trace
+    /// is swallowed too.
+    /// </summary>
+    internal static EventHandler Guarded(string item, Action click, Action<string> trace) => (_, _) =>
+    {
+        try
+        {
+            click();
+        }
+        catch (Exception error)
+        {
+            try
+            {
+                trace($"tray click-failed item={item} error={error.GetType().Name}");
+            }
+            catch
+            {
+            }
+        }
+    };
 
     private Image? Track(Image? image)
     {

@@ -10,6 +10,10 @@
 //   CielWin.App/Assets/raphael-mini.png  256x256 master, straight alpha (the 256 frame of the .ico)
 //   CielWin.App/Assets/raphael-mini.ico  16, 20, 24, 32, 48 (32-bit BMP + AND mask) and 256 (PNG)
 //
+// Tray sizes (16, 20, 24) get a contrast pass after resampling (trayContrast): at those sizes the figure
+// averages into a pale, half-transparent gold disc that washes out on a light taskbar, so their alpha is
+// raised, the gold deepened and a thin dark outline drawn around the silhouette. 32 and up are untouched.
+//
 // How the background is removed WITHOUT touching the scene sources: the page already has a transparent
 // background in the mini variant (styles.css, html.scene-mini). Two layers still sit behind the figure
 // and are dropped by a script injected before the page loads:
@@ -34,6 +38,7 @@ const assets = join(repo, "CielWin.App", "Assets");
 const viewport = 512;
 const frameMs = Number(process.env.ICON_FRAME_MS ?? 4000);
 const icoSizes = [16, 20, 24, 32, 48, 256];
+const traySizeMax = 24;
 
 const edgeCandidates = [
   process.env.EDGE,
@@ -59,7 +64,10 @@ async function main() {
   const png = await capture(edge);
   const image = decodePng(png);
   const square = cropToFigure(image);
-  const frames = icoSizes.map((size) => resize(square, size));
+  const frames = icoSizes.map((size) => {
+    const frame = resize(square, size);
+    return size <= traySizeMax ? trayContrast(frame) : frame;
+  });
 
   writeFileSync(join(assets, "raphael-mini.png"), encodePng(frames.at(-1)));
   writeFileSync(join(assets, "raphael-mini.ico"), encodeIco(frames));
@@ -246,6 +254,45 @@ function resize(image, size) {
     }
   }
   return out;
+}
+
+/**
+ * Contrast pass for the tray sizes: alpha 1-(1-a)^3 fills the pale disc, a 1.5 gamma on colour deepens the gold
+ * (the white-hot core stays bright), and every pixel just outside the silhouette (8-neighbourhood) gets a dark
+ * warm outline composited under it, so the disc edge reads on a light taskbar and vanishes on a dark one.
+ */
+function trayContrast(image) {
+  const { width, height } = image;
+  const solidAlpha = 0.35 * 255;
+  const outline = [43, 26, 6];
+  const outlineAlpha = 0.9;
+  const data = new Uint8Array(image.data.length);
+  for (let i = 0; i < data.length; i += 4) {
+    for (let k = 0; k < 3; k++) data[i + k] = Math.round(255 * Math.pow(image.data[i + k] / 255, 1.5));
+    data[i + 3] = Math.round(255 * (1 - Math.pow(1 - image.data[i + 3] / 255, 3)));
+  }
+
+  const isSolid = (x, y) => x >= 0 && y >= 0 && x < width && y < height && data[(y * width + x) * 4 + 3] >= solidAlpha;
+  const out = new Uint8Array(data);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (isSolid(x, y)) continue;
+      let edge = false;
+      for (let dy = -1; dy <= 1 && !edge; dy++) {
+        for (let dx = -1; dx <= 1 && !edge; dx++) edge = isSolid(x + dx, y + dy);
+      }
+      if (!edge) continue;
+      // Straight-alpha "pixel over outline".
+      const i = (y * width + x) * 4;
+      const top = data[i + 3] / 255;
+      const alpha = top + outlineAlpha * (1 - top);
+      for (let k = 0; k < 3; k++) {
+        out[i + k] = Math.round((data[i + k] * top + outline[k] * outlineAlpha * (1 - top)) / alpha);
+      }
+      out[i + 3] = Math.round(alpha * 255);
+    }
+  }
+  return { width, height, data: out };
 }
 
 // --- PNG ----------------------------------------------------------------------------------------------

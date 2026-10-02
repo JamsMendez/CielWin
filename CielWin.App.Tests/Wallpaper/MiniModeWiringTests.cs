@@ -236,6 +236,42 @@ public sealed class MiniModeWiringTests
         Assert.Empty(harness.Saves);
     }
 
+    /// <summary>
+    /// The move runs as a posted dispatcher operation: a throw there would be an unhandled dispatcher
+    /// exception and take the whole app down, so it is traced and the position is not persisted.
+    /// </summary>
+    [Fact]
+    public void AltM_WhenTheDisplayReadThrows_TracesAndNeitherMovesNorPersists()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(Mini(MiniPosition.TopLeft));
+        harness.DisplayOverride = () => throw new InvalidOperationException("no monitor");
+
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+
+        Assert.Empty(harness.Mini.Moves);
+        Assert.Empty(harness.Saves);
+        Assert.Contains(harness.Trace, line => line.Contains("mini-position move-failed error=InvalidOperationException", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AltM_WhenTheWindowMoveThrows_TracesDoesNotPersist_AndTheNextPressStillWorks()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(Mini(MiniPosition.TopLeft));
+        harness.Mini.ThrowOnMove = true;
+
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+
+        Assert.Empty(harness.Saves);
+        Assert.Contains(harness.Trace, line => line.Contains("mini-position move-failed error=InvalidOperationException", StringComparison.Ordinal));
+
+        harness.Mini.ThrowOnMove = false;
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+
+        Assert.Equal(MiniPosition.TopCenter, harness.Saves[^1].MiniPosition);
+    }
+
     [Fact]
     public void AnUnknownHotkeyId_IsIgnored()
     {

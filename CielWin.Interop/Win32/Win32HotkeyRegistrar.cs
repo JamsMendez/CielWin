@@ -22,7 +22,11 @@ namespace CielWin.Interop.Win32;
 /// raise belong to that thread.
 /// </para>
 /// </remarks>
-public sealed unsafe partial class Win32HotkeyRegistrar : IHotkeyRegistrar
+/// <param name="onHandlerFailed">
+/// Invoked with the exception TYPE name only (never <see cref="Exception.Message"/>, which can hold
+/// an absolute path) when a <see cref="Pressed"/> handler throws; the failure is swallowed either way.
+/// </param>
+public sealed unsafe partial class Win32HotkeyRegistrar(Action<string>? onHandlerFailed = null) : IHotkeyRegistrar
 {
     /// <summary><c>WM_HOTKEY</c>.</summary>
     internal const uint WmHotkey = 0x0312;
@@ -102,7 +106,8 @@ public sealed unsafe partial class Win32HotkeyRegistrar : IHotkeyRegistrar
     /// <summary>
     /// The window procedure's decision, testable without a window: WM_HOTKEY raises
     /// <see cref="Pressed"/> with the id carried in <paramref name="wParam"/>. A throwing handler is
-    /// swallowed -- an exception must never unwind through a native window procedure.
+    /// reported to the failure callback and swallowed -- an exception must never unwind through a
+    /// native window procedure, not even one thrown by that callback.
     /// </summary>
     internal bool HandleMessage(uint message, nuint wParam)
     {
@@ -115,8 +120,15 @@ public sealed unsafe partial class Win32HotkeyRegistrar : IHotkeyRegistrar
         {
             Pressed?.Invoke((int)wParam);
         }
-        catch
+        catch (Exception exception)
         {
+            try
+            {
+                onHandlerFailed?.Invoke(exception.GetType().Name);
+            }
+            catch
+            {
+            }
         }
 
         return true;
