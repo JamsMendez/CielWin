@@ -139,5 +139,23 @@ Slice boundaries are recorded per task below once PRs exist.
 - NOT A DEFECT (T5b) T5 `processing/js/main.js:71-108`: a throwing scene layer leaves canvas save/restore unbalanced.
 - FIXED (T5b) T5 `explorer/js/animate.js:175-177` cache key committed before mask build (and idle); `earth.js:318-319` mini basis (and idle). Unflagged same-pattern: `rings.js` uses `sceneBasis(W,H)` in mini for ruler/paragraph/outer ring sizes (left as is).
 
-## Next step
-T6 Mini.
+## Next step (resume here — session ended 2026-10-02)
+State: branch `feat/cielwin-extraction`, HEAD `3ce61fd`, working tree clean, build 0 warnings,
+tests green (Interop 172 + 14 skipped real-desktop, App 286). gentle-ai installed: 3.7.0.
+1. Upgrade gentle-ai to v4.0.0 (user request), then run `gentle-ai sync` (v4 release notes require
+   it; v4 retires SDD, ODD only). Re-check `gentle-ai review mode status`.
+2. Pending reviews (RDD on, user grants consents while present). Keep each candidate <= ~3k changed
+   lines (lens_context_budget_exceeded near ~3.5k). Detach HEAD at the slice tip, assess with
+   `--base-ref <prev> --committed-only`, follow returned transitions, launch captures concurrently:
+   - `4dc7414..12dc958` (idle animation+rings, idle harness, ~2.2k)
+   - `12dc958..cee39af` (raphael page/core + layers/glyph rings, ~2.8k)
+   - `cee39af..c1ccbd2` (raphael feathers/nebula/sprites + harness, ~1.9k)
+   - `c1ccbd2..3ce61fd` (T5b fixes, ~900)
+   - `86320dd..4dc7414` stays unreviewed (declined after gentle-ai #4571 terminal stop). If #4571
+     reproduces on v4.x, comment on #4571 (user decision); token at the user's Documents\Claude\gh-token, no gh CLI.
+   Return to the branch (`git switch feat/cielwin-extraction`) after reviews.
+3. T6 Mini (reuse `MiniProcessFailurePolicy` added in T5b), then T7 (composition root must honour
+   `SettingsLoadResult.CanSave`), T8 README.
+4. Backup branches `backup/t5-unsplit`, `backup/scenes-unsplit` can be deleted once reviews finish.
+5. Engram mirror is pending (engram MCP disconnected this session): re-save this document to topic
+   `odd/cielwin-extraction/tasks`.
