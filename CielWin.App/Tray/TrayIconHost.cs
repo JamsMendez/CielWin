@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using CielWin.App.Alerts;
 
 namespace CielWin.App.Tray;
 
@@ -42,6 +43,13 @@ public sealed class TrayIconHost : IDisposable
         var alertSoundsItem = new ToolStripMenuItem(AlertSoundsLabel);
         alertSoundsItem.Click += Guarded("alert-sounds", controller.ToggleAlertSounds, trace);
 
+        ToolStripMenuItem SoundItem(TrayMenuEntry entry, string item, Action click)
+        {
+            var menuItem = new ToolStripMenuItem(SoundEntryLabel(entry));
+            menuItem.Click += Guarded(item, click, trace);
+            return menuItem;
+        }
+
         var exitItem = new ToolStripMenuItem("Exit") { Image = Track(TrayGlyphs.Render(TrayGlyphs.Exit)) };
         exitItem.Click += Guarded("exit", controller.Exit, trace);
 
@@ -50,12 +58,20 @@ public sealed class TrayIconHost : IDisposable
         {
             [TrayMenuEntry.Mode] = modeItem,
             [TrayMenuEntry.Scene] = sceneItem,
+            [TrayMenuEntry.ImportFailedSound] = SoundItem(
+                TrayMenuEntry.ImportFailedSound, "import-failed-sound", () => controller.ImportAlertSound(AlertKind.Failed)),
+            [TrayMenuEntry.ImportWarningSound] = SoundItem(
+                TrayMenuEntry.ImportWarningSound, "import-warning-sound", () => controller.ImportAlertSound(AlertKind.Warning)),
+            [TrayMenuEntry.RemoveFailedSound] = SoundItem(
+                TrayMenuEntry.RemoveFailedSound, "remove-failed-sound", () => controller.RemoveAlertSound(AlertKind.Failed)),
+            [TrayMenuEntry.RemoveWarningSound] = SoundItem(
+                TrayMenuEntry.RemoveWarningSound, "remove-warning-sound", () => controller.RemoveAlertSound(AlertKind.Warning)),
             [TrayMenuEntry.AlertSounds] = alertSoundsItem,
             [TrayMenuEntry.Exit] = exitItem,
         };
         foreach (var entry in MenuOrder)
         {
-            if (entry == TrayMenuEntry.Exit)
+            if (entry is TrayMenuEntry.ImportFailedSound or TrayMenuEntry.Exit)
             {
                 _menu.Items.Add(new ToolStripSeparator());
             }
@@ -63,11 +79,17 @@ public sealed class TrayIconHost : IDisposable
             _menu.Items.Add(items[entry]);
         }
 
-        // The ticks are re-read on every open, never flipped by WinForms (CheckOnClick stays off):
-        // the scene also changes over HTTP, and the controller is the only owner of the state.
+        // The ticks and the shown entries are re-read on every open, never flipped by WinForms
+        // (CheckOnClick stays off): the scene also changes over HTTP, and the controller is the only
+        // owner of the state.
         void RefreshChecks()
         {
             alertSoundsItem.Checked = controller.AlertSoundsEnabled;
+            foreach (var (entry, item) in items)
+            {
+                // Available, not Visible: Visible reads false whenever the menu is closed.
+                item.Available = controller.IsVisible(entry);
+            }
 
             foreach (var (mode, item) in modeItems)
             {
@@ -99,16 +121,32 @@ public sealed class TrayIconHost : IDisposable
     /// </summary>
     public const string IconResourceName = "CielWin.App.Assets.raphael-mini.ico";
 
-    /// <summary>The order the items appear in: the mode switch, the scene switch, the alert sounds toggle, then exit.</summary>
+    /// <summary>
+    /// The order the items appear in: the mode switch, the scene switch, the sound group (imports,
+    /// removes, the mute toggle), then exit. A separator precedes the sound group and exit.
+    /// </summary>
     public static IReadOnlyList<TrayMenuEntry> MenuOrder { get; } =
     [
         TrayMenuEntry.Mode,
         TrayMenuEntry.Scene,
+        TrayMenuEntry.ImportFailedSound,
+        TrayMenuEntry.ImportWarningSound,
+        TrayMenuEntry.RemoveFailedSound,
+        TrayMenuEntry.RemoveWarningSound,
         TrayMenuEntry.AlertSounds,
         TrayMenuEntry.Exit,
     ];
 
     public const string AlertSoundsLabel = "Alert sounds";
+
+    public static string SoundEntryLabel(TrayMenuEntry entry) => entry switch
+    {
+        TrayMenuEntry.ImportFailedSound => "Import failed sound…",
+        TrayMenuEntry.ImportWarningSound => "Import warning sound…",
+        TrayMenuEntry.RemoveFailedSound => "Remove failed sound",
+        TrayMenuEntry.RemoveWarningSound => "Remove warning sound",
+        _ => entry.ToString(),
+    };
 
     public static string ModeLabel(WallpaperMode mode) => mode switch
     {

@@ -83,9 +83,16 @@ again (dropped after waiting more than 5 minutes). The mini window is never paus
 |------|--------|
 | Wallpaper mode | Switch live between **Scene wallpaper** and **Mini window** (checked item = current) |
 | Scene | Switch to Processing, Explorer, Idle or Raphael (checked item = current) |
+| Import failed sound… / Import warning sound… | Pick a `.wav`, `.mp3` or `.m4a` file; it is copied into `%LOCALAPPDATA%\CielWin\sounds\` and played when an alert of that kind appears |
+| Remove failed sound / Remove warning sound | Delete that kind's imported sound (shown only when it has one) |
+| Alert sounds | Mute or unmute alert sounds (checked = on; shown only when at least one sound is imported) |
 | Exit | Close CielWin |
 
-Mode and scene changes are saved to the settings file.
+Mode, scene and sound changes are saved to the settings file.
+
+No sound ships with CielWin: alerts are silent until you import one. Each kind plays only its own
+sound (an alert with any failed tile plays the failed sound); a kind without a sound stays silent.
+A missing or unplayable sound file is skipped and noted in the trace log.
 
 ## Hotkeys
 
@@ -124,9 +131,13 @@ File: `%LOCALAPPDATA%\CielWin\settings.conf`
 | `http-server-port` | `1`-`65535` | `47811` |
 | `scene` | `processing`, `explorer`, `idle`, `raphael` | `processing` |
 | `mini-position` | `top-left`, `top-center`, `top-right`, `right-center`, `bottom-right`, `bottom-center`, `bottom-left`, `left-center` | `top-right` |
+| `alert-sounds` | `on`, `off` (also `true`/`false`, `1`/`0`) | `on` |
+| `failed-sound` | A file name in `%LOCALAPPDATA%\CielWin\sounds\` ending in `.wav`, `.mp3` or `.m4a`; empty for none | empty |
+| `warning-sound` | Same as `failed-sound` | empty |
 
 `scene` and `mini-position` are also written by CielWin whenever you change them from the tray, the
-hotkeys or the HTTP API. `http-server = off` closes the port and disables both HTTP routes.
+hotkeys or the HTTP API; `alert-sounds`, `failed-sound` and `warning-sound` by the tray. A sound
+value that is not a bare file name of a supported format reads as no sound. `http-server = off` closes the port and disables both HTTP routes.
 
 **Legacy keys (read, never written).** Settings files from CosmicWin keep working:
 `wallpaper-mode = html | html-mini | mini`, `wallpaper-scene`, `mini-corner`, `alert-http` and

@@ -55,7 +55,6 @@ public static partial class ProductionComposition
         var settingsPath = SettingsFile.ResolvePath();
         var loaded = StartupSettings.Load(settingsPath, trace.Record);
         var dispatcher = Dispatcher.CurrentDispatcher;
-        var sounds = new AlertSoundLibrary(AlertSoundLibrary.ResolveDefaultDirectory());
 
         var host = new CompositionHost
         {
@@ -85,14 +84,28 @@ public static partial class ProductionComposition
                 errorType => trace.Record($"hotkey handler-failed error={errorType}")),
             BuildTray = controller => new TrayIconHost(controller, trace.Record),
             Shutdown = shutdown,
+            AlertSoundLibrary = new AlertSoundLibrary(AlertSoundLibrary.ResolveDefaultDirectory()),
+            PickAlertSoundFile = PickAlertSoundFile,
+            CreateAlertSoundPlayer = resolve => MediaAlertSoundPlayer.CreateProduction(resolve, trace.Record),
         };
 
         return AppComposition.Wire(
             loaded,
             settings => SettingsFile.Save(settingsPath, settings, type => trace.Record($"settings-file save-failed error={type}")),
-            host,
-            MediaAlertSoundPlayer.CreateProduction(
-                kind => loaded.Settings.SoundFor(kind) is { } name ? sounds.PathOf(name) : null, trace.Record));
+            host);
+    }
+
+    /// <summary>The "Import ... sound" dialog: modal, filtered to the formats the import accepts.</summary>
+    private static string? PickAlertSoundFile(AlertKind kind)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = $"Import {AlertSoundLibrary.KindName(kind)} sound",
+            Filter = AlertSoundLibrary.FileDialogFilter,
+            CheckFileExists = true,
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
     private sealed class TimerStopper(DispatcherTimer timer) : IDisposable
