@@ -62,7 +62,16 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   `dotnet build --no-incremental` 0 warnings, 0 errors. Commit `047ea3b`. Parent spot check: 16 focused tests pass.
 - Review assess `868364d..047ea3b`: risk medium, `review_due` false (`under_budget`); stays pending in the slice.
 - F3a decided (keep 202), F3c done: `cielwin.ico` deleted.
+- F3b implemented (route: delegated writer), awaiting user's visual check on a light taskbar.
+  `render-raphael-mini.mjs` runs a `trayContrast` pass on the 16/20/24 frames only: alpha `1-(1-a)^3` (the
+  averaged disc was mostly alpha 50-120 of 255), colour gamma 1.5 to deepen the gold (white-hot core stays bright),
+  and a 1 px dark warm outline (`#2B1A06`, 0.9 alpha) composited under pixels just outside the silhouette.
+  No RED: a visual change has no meaningful deterministic test. Checks: script ran; frame list unchanged
+  (16, 20, 24, 32, 48 as 32-bit BMP, 256 as PNG); 32, 48 and 256 frames and `raphael-mini.png` byte-identical to
+  before (the capture is deterministic), only 16/20/24 changed; before/after composites on #F3F3F3 and #202020
+  inspected (light: pale blur before, defined gold disc with dark rim after); `dotnet build` 0 warnings, 0 errors;
+  `dotnet test CielWin.App.Tests --filter FullyQualifiedName~Tray` 33 passed.
 
 ## Next step
 
-F3b icon contrast fix, then the user's visual check.
+User's visual check of the F3b tray icon on a light taskbar; tick F3b and F3 if it reads well.
