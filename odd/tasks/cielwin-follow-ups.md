@@ -39,7 +39,7 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
 - [x] F4 Mini window partial move (review R3-mini-move-partial-state, `MiniSceneSurface.cs:98-108`): when `MoveTo`
       throws after the native window moved, the surface must not keep or persist a stale `Position`.
       Branch `fix/cielwin-review-suggestions`. Route: delegated writer.
-- [ ] F5 Icon contrast test (review R3-ico-unverified): a deterministic test over `CielWin.App/Assets/raphael-mini.ico`
+- [x] F5 Icon contrast test (review R3-ico-unverified): a deterministic test over `CielWin.App/Assets/raphael-mini.ico`
       that would fail if the 16/20/24 px frames lost their contrast (e.g. went pale or fully opaque).
       Route: same delegated writer.
 
@@ -96,7 +96,17 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   records the move then throws. RED: new `AltM_WhenTheWindowMoveThrowsAfterMoving_...` failed (after a tick the window
   stayed at `{852,0,216,216}`, expected the confirmed `{0,0,216,216}`). GREEN: 54 mini tests pass; full suites
   App 489 passed (was 488), Interop 184 passed + 16 skipped; `dotnet build --no-incremental` 0 warnings, 0 errors.
+  Commit `41fa91a`.
+- F5 done (route: delegated writer). `TrayIconHostTests.TheSmallTrayIconFrames_KeepTheirContrastPass` decodes the
+  embedded icon's 16/20/24 px 32-bit BMP frames by hand (no new package) and asserts: alpha >= 192 on 25-75% of the
+  frame (measured 43-48% now, 2% before the pass), at least `size` dark solid rim pixels touching the outside
+  (luma < 80, alpha >= 128; measured 49/56/67 now, 0 before), and four fully transparent corners.
+  RED: with the pre-fix `before.ico` copied over the asset locally, the test failed
+  (`16 px: 4 of 256 pixels mostly opaque (pale frame)`); asset restored with `git checkout`,
+  `git diff --stat main -- CielWin.App/Assets` empty. GREEN: 14 `TrayIconHostTests` pass; full suites App 490 passed,
+  Interop 184 passed + 16 skipped; `dotnet build --no-incremental` 0 warnings, 0 errors.
 
 ## Next step
 
-F4 and F5 (user request 2026-10-02, before push).
+F4 and F5 done on `fix/cielwin-review-suggestions`. Next: review assess of the branch commits, then the user's
+push / merge decision.
