@@ -159,6 +159,9 @@ Slice boundaries are recorded per task below once PRs exist.
   `feathers.js:32-49`; `RaphaelSceneNodeTests.cs:70,93-97` suggestions.
 - T5b slice (`c1ccbd2..3ce61fd`, informational): R3-001 `AlertLayerPreloadState.cs:100-103`,
   R3-002 `SettingsFile.cs:81-82` (warnings).
+- T6 review (`3ce61fd..2ba405d`, 1 lens) approved+ack (informational): R3-001 `MiniSceneWindowController.cs:176-179`
+  and R3-002 `:227-231` (warnings), R3-003 `WebView2MiniSceneBrowser.cs:95-101`, R3-004 `MiniSceneWindowController.cs:175`
+  (suggestions).
 
 ## Next step (resume here — updated 2026-10-01)
 State: branch `feat/cielwin-extraction`, gentle-ai 4.0.0 synced, RDD on. All slice reviews done
