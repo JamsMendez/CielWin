@@ -17,6 +17,54 @@ public sealed class SettingsTests
         Assert.Equal(47811, settings.HttpServerPort);
         Assert.Equal(WallpaperScene.Processing, settings.WallpaperScene);
         Assert.Equal(MiniPosition.TopRight, settings.MiniPosition);
+        Assert.True(settings.AlertSoundsEnabled);
+    }
+
+    [Theory]
+    [InlineData("alert-sounds = off", false)]
+    [InlineData("alert-sounds = 0", false)]
+    [InlineData("ALERT-SOUNDS = On", true)]
+    [InlineData("alert-sounds = true", true)]
+    public void AlertSoundsIsRead_AsAFlag(string line, bool expected)
+    {
+        Assert.Equal(expected, Settings.Parse(line).AlertSoundsEnabled);
+    }
+
+    [Theory]
+    [InlineData("alert-sounds = muted")]
+    [InlineData("alert-sounds =")]
+    public void AnUnreadableAlertSoundsValue_KeepsSoundsOn(string line)
+    {
+        Assert.True(Settings.Parse(line).AlertSoundsEnabled);
+    }
+
+    [Fact]
+    public void AFileWrittenBeforeAlertSoundsExisted_LoadsWithSoundsOn()
+    {
+        var older = """
+            wallpaper-mode = scene-mini
+            http-server = on
+            http-server-port = 47811
+            scene = idle
+            mini-position = bottom-left
+            """;
+
+        var settings = Settings.Parse(older);
+
+        Assert.True(settings.AlertSoundsEnabled);
+        Assert.Equal(WallpaperScene.Idle, settings.WallpaperScene);
+    }
+
+    [Theory]
+    [InlineData(true, "alert-sounds = on")]
+    [InlineData(false, "alert-sounds = off")]
+    public void Serialize_WritesAlertSounds_AndRoundTrips(bool enabled, string expectedLine)
+    {
+        var original = Settings.Default with { AlertSoundsEnabled = enabled };
+        var text = original.Serialize();
+
+        Assert.Contains(expectedLine, text.Split('\n').Select(line => line.Trim()));
+        Assert.Equal(original, Settings.Parse(text));
     }
 
     [Theory]
@@ -267,7 +315,8 @@ public sealed class SettingsTests
             HttpServerPort: 12345,
             WallpaperMode: WallpaperMode.SceneMini,
             WallpaperScene: WallpaperScene.Raphael,
-            MiniPosition: MiniPosition.LeftCenter);
+            MiniPosition: MiniPosition.LeftCenter,
+            AlertSoundsEnabled: false);
 
         Assert.Equal(original, Settings.Parse(original.Serialize()));
     }
@@ -306,7 +355,7 @@ public sealed class SettingsTests
             .Select(line => line[..line.IndexOf('=')].Trim())
             .ToArray();
 
-        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position"], keys);
+        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position", "alert-sounds"], keys);
         Assert.StartsWith("# CielWin settings", text, StringComparison.Ordinal);
         Assert.DoesNotContain("CosmicWin", text, StringComparison.Ordinal);
         Assert.DoesNotContain("wallpaper-scene", text, StringComparison.Ordinal);

@@ -8,6 +8,7 @@ namespace CielWin.App.Tray;
 public sealed class TrayMenuController(
     Func<WallpaperMode> getMode, Action<WallpaperMode> selectMode,
     Func<WallpaperScene> getScene, Action<WallpaperScene> selectScene,
+    Func<bool> getAlertSounds, Action toggleAlertSounds,
     Action exit)
 {
     /// <summary>Every mode, in declaration order: the mode submenu's items.</summary>
@@ -20,9 +21,13 @@ public sealed class TrayMenuController(
 
     public WallpaperScene Scene => getScene();
 
+    public bool AlertSoundsEnabled => getAlertSounds();
+
     public void SelectMode(WallpaperMode mode) => selectMode(mode);
 
     public void SelectScene(WallpaperScene scene) => selectScene(scene);
+
+    public void ToggleAlertSounds() => toggleAlertSounds();
 
     public void Exit() => exit();
 }

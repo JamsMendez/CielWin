@@ -39,6 +39,9 @@ public sealed class TrayIconHost : IDisposable
             sceneItems.Add((scene, item));
         }
 
+        var alertSoundsItem = new ToolStripMenuItem(AlertSoundsLabel);
+        alertSoundsItem.Click += Guarded("alert-sounds", controller.ToggleAlertSounds, trace);
+
         var exitItem = new ToolStripMenuItem("Exit") { Image = Track(TrayGlyphs.Render(TrayGlyphs.Exit)) };
         exitItem.Click += Guarded("exit", controller.Exit, trace);
 
@@ -47,6 +50,7 @@ public sealed class TrayIconHost : IDisposable
         {
             [TrayMenuEntry.Mode] = modeItem,
             [TrayMenuEntry.Scene] = sceneItem,
+            [TrayMenuEntry.AlertSounds] = alertSoundsItem,
             [TrayMenuEntry.Exit] = exitItem,
         };
         foreach (var entry in MenuOrder)
@@ -63,6 +67,8 @@ public sealed class TrayIconHost : IDisposable
         // the scene also changes over HTTP, and the controller is the only owner of the state.
         void RefreshChecks()
         {
+            alertSoundsItem.Checked = controller.AlertSoundsEnabled;
+
             foreach (var (mode, item) in modeItems)
             {
                 item.Checked = controller.Mode == mode;
@@ -93,13 +99,16 @@ public sealed class TrayIconHost : IDisposable
     /// </summary>
     public const string IconResourceName = "CielWin.App.Assets.raphael-mini.ico";
 
-    /// <summary>The order the items appear in: the mode switch, the scene switch, then exit.</summary>
+    /// <summary>The order the items appear in: the mode switch, the scene switch, the alert sounds toggle, then exit.</summary>
     public static IReadOnlyList<TrayMenuEntry> MenuOrder { get; } =
     [
         TrayMenuEntry.Mode,
         TrayMenuEntry.Scene,
+        TrayMenuEntry.AlertSounds,
         TrayMenuEntry.Exit,
     ];
+
+    public const string AlertSoundsLabel = "Alert sounds";
 
     public static string ModeLabel(WallpaperMode mode) => mode switch
     {

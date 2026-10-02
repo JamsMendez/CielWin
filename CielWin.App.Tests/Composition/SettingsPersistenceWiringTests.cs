@@ -149,7 +149,8 @@ public sealed class SettingsPersistenceWiringTests
         using var composition = AppComposition.Wire(
             new SettingsLoadResult(new Settings(), SettingsLoadStatus.Loaded),
             _ => throw new IOException("disk full"),
-            host);
+            host,
+            harness.Sounds);
 
         harness.Tray!.Controller.SelectScene(WallpaperScene.Idle);
 

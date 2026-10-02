@@ -1,3 +1,4 @@
+using CielWin.App.Alerts;
 using CielWin.App.Composition;
 using CielWin.App.Input;
 using CielWin.App.Tray;
@@ -16,7 +17,7 @@ namespace CielWin.App;
 /// thread and only post work to the UI thread (the scene route must not block).
 /// </para>
 /// <para>
-/// Persistence: every change (scene, mode, mini position) goes through one
+/// Persistence: every change (scene, mode, mini position, alert sounds) goes through one
 /// <see cref="SynchronizedSettingsStore"/>, which keeps the in-memory snapshot current. When the
 /// settings file exists but could not be read (<see cref="SettingsLoadResult.CanSave"/> false), the
 /// store's save is replaced by a trace for the whole session: saving would overwrite the user's real
@@ -45,7 +46,7 @@ public sealed class AppComposition : IDisposable
     private volatile bool _disposed;
     private bool _coverCheckFailing;
 
-    private AppComposition(SettingsLoadResult loaded, Action<Settings> save, CompositionHost host)
+    private AppComposition(SettingsLoadResult loaded, Action<Settings> save, CompositionHost host, IAlertSoundPlayer alertSounds)
     {
         _host = host;
         _trace = host.Trace;
@@ -53,13 +54,15 @@ public sealed class AppComposition : IDisposable
         _store = new SynchronizedSettingsStore(
             loaded.Settings,
             loaded.CanSave ? save : _ => _trace("settings-file save-skipped reason=unreadable"));
-        _alerts = new AlertDriver(host.Clock, host.ReadPrimaryDisplay, _trace);
+        _alerts = new AlertDriver(
+            host.Clock, host.ReadPrimaryDisplay, alertSounds, () => _store.Current.AlertSoundsEnabled, _trace);
     }
 
     /// <summary>Builds and starts everything. Call on the UI thread.</summary>
-    public static AppComposition Wire(SettingsLoadResult loaded, Action<Settings> save, CompositionHost host)
+    public static AppComposition Wire(
+        SettingsLoadResult loaded, Action<Settings> save, CompositionHost host, IAlertSoundPlayer alertSounds)
     {
-        var composition = new AppComposition(loaded, save, host);
+        var composition = new AppComposition(loaded, save, host, alertSounds);
         composition.Start(loaded);
         return composition;
     }
@@ -88,6 +91,7 @@ public sealed class AppComposition : IDisposable
             _tray = _host.BuildTray(new TrayMenuController(
                 () => _mode, mode => _host.OnUiThread(() => SelectMode(mode)),
                 () => _store.Current.WallpaperScene, scene => _host.OnUiThread(() => SwitchScene(scene, "tray")),
+                () => _store.Current.AlertSoundsEnabled, () => _host.OnUiThread(ToggleAlertSounds),
                 _host.Shutdown));
         }
         catch (Exception error)
@@ -191,6 +195,18 @@ public sealed class AppComposition : IDisposable
         ActivateSurface();
         Persist(settings => settings with { WallpaperMode = mode });
         _trace($"mode switched mode={mode}");
+    }
+
+    /// <summary>Tray: flips whether new alerts play their sound, and persists it.</summary>
+    private void ToggleAlertSounds()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        Persist(settings => settings with { AlertSoundsEnabled = !settings.AlertSoundsEnabled });
+        _trace($"alert-sounds toggled enabled={_store.Current.AlertSoundsEnabled}");
     }
 
     /// <summary>UI thread: switches the active surface's scene and persists it when it switched.</summary>

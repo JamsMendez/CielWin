@@ -12,6 +12,9 @@ public enum TrayMenuEntry
     /// <summary>Submenu: every bundled scene, the current one checked.</summary>
     Scene,
 
+    /// <summary>Toggle: whether a new alert plays its sound, checked when it does.</summary>
+    AlertSounds,
+
     /// <summary>Ends CielWin.</summary>
     Exit,
 }

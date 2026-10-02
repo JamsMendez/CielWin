@@ -54,6 +54,10 @@ public enum WallpaperScene
 /// <param name="WallpaperMode"><c>wallpaper-mode</c>: <c>scene</c> or <c>scene-mini</c>.</param>
 /// <param name="WallpaperScene">The current scene, persisted so it survives restarts (<c>scene</c>).</param>
 /// <param name="MiniPosition">Where the mini window sits (<c>mini-position</c>).</param>
+/// <param name="AlertSoundsEnabled">
+/// Whether a newly shown alert plays its sound (<c>alert-sounds</c>). On by default, so a file written
+/// before the key existed keeps sounds on.
+/// </param>
 /// <remarks>
 /// A flat <c>key = value</c> text file a person is expected to edit. Blank lines and <c>#</c> comments
 /// are ignored, unknown keys (including every key CosmicWin had that CielWin dropped) are skipped,
@@ -68,7 +72,8 @@ public sealed record Settings(
     int HttpServerPort = AlertHttpProtocol.DefaultPort,
     WallpaperMode WallpaperMode = WallpaperMode.Scene,
     WallpaperScene WallpaperScene = WallpaperScene.Processing,
-    MiniPosition MiniPosition = MiniPosition.TopRight)
+    MiniPosition MiniPosition = MiniPosition.TopRight,
+    bool AlertSoundsEnabled = true)
 {
     public static Settings Default { get; } = new();
 
@@ -81,6 +86,7 @@ public sealed record Settings(
     private const string LegacySceneKey = "wallpaper-scene";
     private const string MiniPositionKey = "mini-position";
     private const string LegacyMiniPositionKey = "mini-corner";
+    private const string AlertSoundsKey = "alert-sounds";
 
     private static readonly (string Name, WallpaperMode Value)[] ModeNames =
     [
@@ -127,6 +133,7 @@ public sealed record Settings(
         bool? httpServer = null, legacyHttpServer = null;
         int? port = null, legacyPort = null;
         MiniPosition? miniPosition = null, legacyMiniPosition = null;
+        var alertSounds = Default.AlertSoundsEnabled;
 
         foreach (var rawLine in content.Split('\n'))
         {
@@ -196,6 +203,9 @@ public sealed record Settings(
                     }
 
                     break;
+                case AlertSoundsKey:
+                    alertSounds = TryReadFlag(value) ?? alertSounds;
+                    break;
             }
         }
 
@@ -204,7 +214,8 @@ public sealed record Settings(
             port ?? legacyPort ?? Default.HttpServerPort,
             wallpaperMode,
             scene ?? legacyScene ?? Default.WallpaperScene,
-            miniPosition ?? legacyMiniPosition ?? Default.MiniPosition);
+            miniPosition ?? legacyMiniPosition ?? Default.MiniPosition,
+            alertSounds);
     }
 
     /// <summary>The file this instance would be written as, comment and all.</summary>
@@ -233,6 +244,11 @@ public sealed record Settings(
          # (`top-left`, `top-right` (default), `bottom-left`, `bottom-right`) or a side midpoint
          # (`top-center`, `right-center`, `bottom-center`, `left-center`).
          {MiniPositionKey} = {NameOf(MiniPositionNames, MiniPosition)}
+
+         # {AlertSoundsKey}: on (default) plays a sound when an alert appears (the failed sound when
+         # it has any failed tile, otherwise the warning sound); off keeps alerts silent. Also
+         # toggled from the tray menu.
+         {AlertSoundsKey} = {(AlertSoundsEnabled ? "on" : "off")}
 
          """;
 

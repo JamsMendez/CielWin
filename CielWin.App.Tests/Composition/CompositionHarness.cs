@@ -25,6 +25,7 @@ internal sealed class CompositionHarness
     public List<HttpServerOptions> ServerRequests { get; } = [];
     public FakeHotkeys Hotkeys { get; } = new();
     public FakeTray? Tray { get; private set; }
+    public FakeAlertSoundPlayer Sounds { get; } = new();
     public ManualClock Clock { get; } = new();
     public List<Action> UiQueue { get; } = [];
 
@@ -67,7 +68,7 @@ internal sealed class CompositionHarness
     }
 
     public AppComposition Wire(Settings settings, SettingsLoadStatus status = SettingsLoadStatus.Loaded) =>
-        AppComposition.Wire(new SettingsLoadResult(settings, status), Saves.Add, Build());
+        AppComposition.Wire(new SettingsLoadResult(settings, status), Saves.Add, Build(), Sounds);
 
     public CompositionHost Build() => new()
     {
@@ -307,6 +308,18 @@ internal sealed class FakeTray(TrayMenuController controller) : IDisposable
     public TrayMenuController Controller { get; } = controller;
     public int DisposeCalls { get; private set; }
     public void Dispose() => DisposeCalls++;
+}
+
+internal sealed class FakeAlertSoundPlayer : IAlertSoundPlayer
+{
+    public List<AlertKind> Played { get; } = [];
+    public bool Throws { get; set; }
+
+    public void Play(AlertKind kind)
+    {
+        if (Throws) throw new InvalidOperationException("no audio device");
+        Played.Add(kind);
+    }
 }
 
 internal sealed class ManualClock : TimeProvider

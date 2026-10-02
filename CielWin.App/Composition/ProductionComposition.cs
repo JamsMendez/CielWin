@@ -89,7 +89,16 @@ public static partial class ProductionComposition
         return AppComposition.Wire(
             loaded,
             settings => SettingsFile.Save(settingsPath, settings, type => trace.Record($"settings-file save-failed error={type}")),
-            host);
+            host,
+            new SilentAlertSoundPlayer());
+    }
+
+    /// <summary>No sound ships with CielWin, so until one is imported every alert is silent.</summary>
+    private sealed class SilentAlertSoundPlayer : IAlertSoundPlayer
+    {
+        public void Play(AlertKind kind)
+        {
+        }
     }
 
     private sealed class TimerStopper(DispatcherTimer timer) : IDisposable

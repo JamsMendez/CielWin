@@ -13,9 +13,17 @@ public sealed class TrayIconHostTests
     /// different order cannot pass.
     /// </summary>
     [Fact]
-    public void TheMenuIsOrdered_ModeThenSceneThenExit()
+    public void TheMenuIsOrdered_ModeThenSceneThenAlertSoundsThenExit()
     {
-        Assert.Equal([TrayMenuEntry.Mode, TrayMenuEntry.Scene, TrayMenuEntry.Exit], TrayIconHost.MenuOrder);
+        Assert.Equal(
+            [TrayMenuEntry.Mode, TrayMenuEntry.Scene, TrayMenuEntry.AlertSounds, TrayMenuEntry.Exit],
+            TrayIconHost.MenuOrder);
+    }
+
+    [Fact]
+    public void TheAlertSoundsToggle_IsLabelledInEnglish()
+    {
+        Assert.Equal("Alert sounds", TrayIconHost.AlertSoundsLabel);
     }
 
     [Fact]

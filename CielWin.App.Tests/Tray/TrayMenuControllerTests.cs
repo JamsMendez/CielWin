@@ -12,11 +12,14 @@ public sealed class TrayMenuControllerTests
     private WallpaperScene _scene = WallpaperScene.Processing;
     private readonly List<WallpaperMode> _modeSelections = [];
     private readonly List<WallpaperScene> _sceneSelections = [];
+    private bool _alertSounds = true;
+    private int _alertSoundToggles;
     private int _exits;
 
     private TrayMenuController Create() => new(
         () => _mode, _modeSelections.Add,
         () => _scene, _sceneSelections.Add,
+        () => _alertSounds, () => _alertSoundToggles++,
         () => _exits++);
 
     [Fact]
@@ -51,6 +54,27 @@ public sealed class TrayMenuControllerTests
         controller.SelectScene(WallpaperScene.Explorer);
 
         Assert.Equal([WallpaperScene.Explorer], _sceneSelections);
+    }
+
+    [Fact]
+    public void AlertSoundsEnabled_ReflectsTheInjectedGetter()
+    {
+        var controller = Create();
+        Assert.True(controller.AlertSoundsEnabled);
+
+        _alertSounds = false;
+
+        Assert.False(controller.AlertSoundsEnabled);
+    }
+
+    [Fact]
+    public void ToggleAlertSounds_ForwardsTheClick()
+    {
+        var controller = Create();
+
+        controller.ToggleAlertSounds();
+
+        Assert.Equal(1, _alertSoundToggles);
     }
 
     [Fact]
