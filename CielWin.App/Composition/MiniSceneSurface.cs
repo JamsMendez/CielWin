@@ -21,7 +21,8 @@ internal sealed class MiniSceneSurface(
     Action<string> trace) : ISceneSurface
 {
     private bool _shown;
-    private Rectangle _placed;
+    /// <summary>Where the window was last confirmed to sit; null when unknown (a move threw).</summary>
+    private Rectangle? _placed;
     private bool _displayReadFailing;
 
     /// <summary>Where the window sits (or would sit, before a successful show).</summary>
@@ -85,7 +86,9 @@ internal sealed class MiniSceneSurface(
     /// Moves the window to <paramref name="next"/>. Refused (false, traced) while the window failed to
     /// show or its browser is not attached, so a position is never persisted for a window that is not
     /// really there. A failing display read or move is refused the same way: it runs as a posted
-    /// dispatcher operation, where an escaping exception would end the app.
+    /// dispatcher operation, where an escaping exception would end the app. A move that throws may
+    /// already have moved the native window, so its placement becomes unknown and the next tick puts it
+    /// back at the confirmed <see cref="Position"/>.
     /// </summary>
     public bool TryMoveTo(MiniPosition next)
     {
@@ -98,6 +101,7 @@ internal sealed class MiniSceneSurface(
         try
         {
             var bounds = Placement(next);
+            _placed = null; // unknown until the move returns: a throwing move may have moved the window
             window.MoveTo(bounds);
             _placed = bounds;
         }

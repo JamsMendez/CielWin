@@ -36,7 +36,7 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   - [x] F3c Delete unused `CielWin.App/cielwin.ico`.
         Decision (user, 2026-10-02): delete. Verified unreferenced by any `.csproj` or source. Route: inline.
 
-- [ ] F4 Mini window partial move (review R3-mini-move-partial-state, `MiniSceneSurface.cs:98-108`): when `MoveTo`
+- [x] F4 Mini window partial move (review R3-mini-move-partial-state, `MiniSceneSurface.cs:98-108`): when `MoveTo`
       throws after the native window moved, the surface must not keep or persist a stale `Position`.
       Branch `fix/cielwin-review-suggestions`. Route: delegated writer.
 - [ ] F5 Icon contrast test (review R3-ico-unverified): a deterministic test over `CielWin.App/Assets/raphael-mini.ico`
@@ -86,6 +86,16 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   (no deterministic test for the small-frame contrast pass).
 
 - F3b visual check: user confirmed the tray icon looks good (2026-10-02). All tasks done; merged to `main`.
+
+- F4 done (route: delegated writer, branch `fix/cielwin-review-suggestions`). `IMiniSceneWindow` cannot report the
+  window's real bounds, so `MiniSceneSurface` now holds `_placed` as `Rectangle?`: it is cleared right before
+  `MoveTo` and set only when the move returns. A move that throws (before or after moving) leaves the placement
+  unknown, so the next `Tick` re-places the window at the confirmed `Position` (the persisted one); nothing is
+  persisted for the failed step and the `mini-position move-failed error=<Type>` trace is unchanged. A failing
+  display read does not clear the placement (the window was not touched). Test fake: `FakeMiniWindow.ThrowAfterMove`
+  records the move then throws. RED: new `AltM_WhenTheWindowMoveThrowsAfterMoving_...` failed (after a tick the window
+  stayed at `{852,0,216,216}`, expected the confirmed `{0,0,216,216}`). GREEN: 54 mini tests pass; full suites
+  App 489 passed (was 488), Interop 184 passed + 16 skipped; `dotnet build --no-incremental` 0 warnings, 0 errors.
 
 ## Next step
 

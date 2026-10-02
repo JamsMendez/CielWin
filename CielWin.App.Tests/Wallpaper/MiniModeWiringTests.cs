@@ -272,6 +272,32 @@ public sealed class MiniModeWiringTests
         Assert.Equal(MiniPosition.TopCenter, harness.Saves[^1].MiniPosition);
     }
 
+    /// <summary>
+    /// A move that throws after the native window already moved leaves the real window away from the
+    /// confirmed position. Nothing is persisted, and the next tick puts the window back where the
+    /// confirmed (persisted) position says it is, instead of trusting the pre-move placement.
+    /// </summary>
+    [Fact]
+    public void AltM_WhenTheWindowMoveThrowsAfterMoving_DoesNotPersist_AndTheNextTickRestoresTheConfirmedPlacement()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(Mini(MiniPosition.TopLeft));
+        var confirmed = harness.Mini.Shows[0].Bounds;
+        harness.Mini.ThrowAfterMove = true;
+
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+
+        Assert.Empty(harness.Saves);
+        Assert.Contains(harness.Trace, line => line.Contains("mini-position move-failed error=InvalidOperationException", StringComparison.Ordinal));
+        Assert.NotEqual(confirmed, harness.Mini.Moves[^1]);
+
+        harness.Mini.ThrowAfterMove = false;
+        harness.Tick();
+
+        Assert.Equal(confirmed, harness.Mini.Moves[^1]);
+        Assert.Empty(harness.Saves);
+    }
+
     [Fact]
     public void AnUnknownHotkeyId_IsIgnored()
     {

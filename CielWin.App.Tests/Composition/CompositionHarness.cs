@@ -241,6 +241,9 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
     public int DisposeCalls { get; private set; }
     public bool SwitchResult { get; set; } = true;
     public bool ThrowOnMove { get; set; }
+
+    /// <summary>Records the move (the native window did move) and then throws, as a partial move would.</summary>
+    public bool ThrowAfterMove { get; set; }
     public bool IsReady => harness.MiniReady;
 
     public bool Show(WallpaperScene scene, Rectangle bounds)
@@ -259,6 +262,7 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
     {
         if (ThrowOnMove) throw new InvalidOperationException("move failed");
         Moves.Add(bounds);
+        if (ThrowAfterMove) throw new InvalidOperationException("move failed after moving");
     }
 
     public void ShowAlert(AlertShowRequest request) => Alerts.Add(request);
