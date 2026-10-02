@@ -25,11 +25,11 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
       Route: delegated writer (3 non-trivial files + tests).
 - [x] F2 Startup failure trace: a throwing `ProductionComposition.Wire` (`App.xaml.cs`) writes a trace line before the
       process exits. Route: delegated writer (same writer as F1).
-- [ ] F3 Product decisions (ask one at a time):
+- [x] F3 Product decisions (ask one at a time):
   - [x] F3a HTTP scene switch while mini window failed: keep 202 or reply 503 like CosmicWin.
         Decision (user, 2026-10-02): keep 202. The scene is persisted and applied on recovery, which is what
         "Accepted" means. No code change.
-  - [ ] F3b Tray icon pale at 16-24 px on light taskbars.
+  - [x] F3b Tray icon pale at 16-24 px on light taskbars.
         Decision (user, 2026-10-02): fix it. Thin dark outline and higher contrast at 16/20/24 px only, in
         `tools/tray-icon/render-raphael-mini.mjs`, then regenerate `CielWin.App/Assets/raphael-mini.ico`.
         Needs a manual visual check by the user. Route: delegated writer.
@@ -78,6 +78,8 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   `Position` stale; only the throw-before-move case is tested); R3-ico-unverified `render-raphael-mini.mjs:259-296`
   (no deterministic test for the small-frame contrast pass).
 
+- F3b visual check: user confirmed the tray icon looks good (2026-10-02). All tasks done; merged to `main`.
+
 ## Next step
 
-User's visual check of the F3b tray icon on a light taskbar; tick F3b and F3 if it reads well.
+None. Optional: the two review suggestions above.
