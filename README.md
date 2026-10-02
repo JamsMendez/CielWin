@@ -6,6 +6,10 @@ It runs as a normal user: no administrator rights, no installer.
 
 ## Quick path
 
+Prebuilt Windows builds are on the [Releases](https://github.com/JamsMendez/CielWin/releases) page:
+download `CielWin-win-x64.zip`, extract it and run `CielWin.App.exe`. It includes the .NET runtime;
+it still needs the WebView2 Runtime, which Windows 11 ships with. To build from source instead:
+
 1. Install the [requirements](#requirements).
 2. Build and start it:
 
@@ -34,6 +38,12 @@ It runs as a normal user: no administrator rights, no installer.
 | Run | `dotnet run --project CielWin.App` |
 | Run the built exe | `CielWin.App\bin\Debug\net10.0-windows10.0.19041.0\CielWin.App.exe` |
 | Test | `dotnet test CielWin.sln` |
+| Release | `git tag vX.Y.Z` then `git push origin vX.Y.Z` |
+
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml`, which publishes a self-contained
+`win-x64` build (no .NET runtime needed on the target machine), zips it and attaches
+`CielWin-win-x64.zip` to a GitHub release for that tag. The build is not code-signed, so Windows
+SmartScreen warns the first time it runs (**More info** → **Run anyway**).
 
 Test notes:
 
