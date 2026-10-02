@@ -29,6 +29,9 @@
     <Content Include="Wallpaper\Web\idle-scene.tests.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Wallpaper\Web\raphael-scene.tests.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Wallpaper\Web\constellation-ring.checks.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
