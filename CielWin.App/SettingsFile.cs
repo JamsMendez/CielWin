@@ -28,17 +28,34 @@ public static class SettingsFile
     /// <summary>
     /// Reads the settings at <paramref name="path"/>. A missing or unreadable file yields
     /// <see cref="Settings.Default"/> -- first run happens before the file exists, and startup must
-    /// not depend on it.
+    /// not depend on it. Callers that later SAVE must use <see cref="TryLoad"/> instead, because this
+    /// overload cannot tell an unreadable file from a missing one.
     /// </summary>
-    public static Settings Load(string path)
+    public static Settings Load(string path) => TryLoad(path).Settings;
+
+    /// <summary>
+    /// Reads the settings at <paramref name="path"/> and says HOW it went, never throwing. An
+    /// existing file that cannot be read (locked by a scanner or editor, transient IO error) yields
+    /// <see cref="SettingsLoadStatus.Unreadable"/>: the defaults are only a stand-in, and saving them
+    /// would overwrite the user's real file.
+    /// </summary>
+    /// <param name="onDiagnostic">
+    /// Invoked with the failed read's exception TYPE NAME ONLY (never the path or message).
+    /// </param>
+    public static SettingsLoadResult TryLoad(string path, Action<string>? onDiagnostic = null)
     {
         try
         {
-            return File.Exists(path) ? Settings.Parse(File.ReadAllText(path)) : Settings.Default;
+            return new SettingsLoadResult(Settings.Parse(File.ReadAllText(path)), SettingsLoadStatus.Loaded);
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new SettingsLoadResult(Settings.Default, SettingsLoadStatus.Missing);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return Settings.Default;
+            Report(onDiagnostic, exception);
+            return new SettingsLoadResult(Settings.Default, SettingsLoadStatus.Unreadable);
         }
     }
 
@@ -50,7 +67,8 @@ public static class SettingsFile
     /// When <paramref name="path"/> does not exist yet, WRITES <see cref="Settings.Default"/> there
     /// (the same commented template a later save produces) before returning it, so a fresh machine
     /// ends up with a real settings.conf to hand-edit. When it already exists this is exactly
-    /// <see cref="Load(string)"/>: the file is read, never rewritten, not even to normalise it.
+    /// <see cref="TryLoad"/>: the file is read, never rewritten, not even to normalise it, and a
+    /// read failure is reported through <paramref name="onDiagnostic"/>.
     /// </summary>
     /// <remarks>
     /// The write goes through <see cref="Save(string, Settings, Action{string}?)"/>, so a first run
@@ -60,13 +78,13 @@ public static class SettingsFile
     /// <param name="onDiagnostic">See <see cref="Save(string, Settings, Action{string}?)"/>.</param>
     public static Settings LoadOrCreate(string path, Action<string>? onDiagnostic = null)
     {
-        if (File.Exists(path))
+        var result = TryLoad(path, onDiagnostic);
+        if (result.Status == SettingsLoadStatus.Missing)
         {
-            return Load(path);
+            Save(path, Settings.Default, onDiagnostic);
         }
 
-        Save(path, Settings.Default, onDiagnostic);
-        return Settings.Default;
+        return result.Settings;
     }
 
     /// <summary>Writes <paramref name="settings"/> to <see cref="ResolvePath"/>.</summary>
@@ -98,20 +116,77 @@ public static class SettingsFile
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllText(path, settings.Serialize());
+            // Write beside the target and move over it: a crash or power loss mid-write must leave
+            // the previous file intact, not a truncated one the next start would parse as defaults.
+            var temp = $"{path}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                File.WriteAllText(temp, settings.Serialize());
+                if (File.Exists(path))
+                {
+                    File.Replace(temp, path, destinationBackupFileName: null);
+                }
+                else
+                {
+                    File.Move(temp, path);
+                }
+            }
+            catch
+            {
+                try
+                {
+                    File.Delete(temp);
+                }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+                {
+                    // The original failure is the one worth reporting; a stray temp file is harmless.
+                }
+
+                throw;
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // The diagnostic is best-effort: in production it writes a trace that usually lives in
-            // the SAME folder that just refused this write. Every exception type is swallowed on
-            // purpose, so a lost diagnostic line never costs a startup or a toggle.
-            try
-            {
-                onDiagnostic?.Invoke(exception.GetType().Name);
-            }
-            catch (Exception)
-            {
-            }
+            Report(onDiagnostic, exception);
         }
     }
+
+    /// <summary>
+    /// The diagnostic is best-effort: in production it writes a trace that usually lives in the SAME
+    /// folder that just refused the IO. Every exception type is swallowed on purpose, so a lost
+    /// diagnostic line never costs a startup or a toggle.
+    /// </summary>
+    private static void Report(Action<string>? onDiagnostic, Exception exception)
+    {
+        try
+        {
+            onDiagnostic?.Invoke(exception.GetType().Name);
+        }
+        catch (Exception)
+        {
+        }
+    }
+}
+
+/// <summary>How reading the settings file went.</summary>
+public enum SettingsLoadStatus
+{
+    /// <summary>The file was read and parsed.</summary>
+    Loaded,
+
+    /// <summary>There is no file yet (first run); the defaults are the real answer.</summary>
+    Missing,
+
+    /// <summary>A file exists but could not be read; the defaults are only a stand-in.</summary>
+    Unreadable,
+}
+
+/// <summary>The settings plus whether they reflect the file on disk.</summary>
+public readonly record struct SettingsLoadResult(Settings Settings, SettingsLoadStatus Status)
+{
+    /// <summary>
+    /// <c>false</c> when saving could destroy the user's data: the file exists but was not read, so
+    /// anything written would replace it with defaults. The composition root must then skip saves.
+    /// </summary>
+    public bool CanSave => Status != SettingsLoadStatus.Unreadable;
 }

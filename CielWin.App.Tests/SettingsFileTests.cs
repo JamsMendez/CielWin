@@ -161,4 +161,93 @@ public sealed class SettingsFileTests : IDisposable
 
         Assert.Empty(diagnostics);
     }
+
+    // The unreadable-file hazard: an existing file that cannot be read yields defaults, and a later
+    // save (scene switch, Alt+M) would replace the user's real settings with them.
+
+    [Fact]
+    public void TryLoad_AMissingFile_IsMissingAndSafeToSave()
+    {
+        var result = SettingsFile.TryLoad(Path_);
+
+        Assert.Equal(SettingsLoadStatus.Missing, result.Status);
+        Assert.Equal(Settings.Default, result.Settings);
+        Assert.True(result.CanSave);
+    }
+
+    [Fact]
+    public void TryLoad_AReadableFile_IsLoaded()
+    {
+        var saved = new Settings(HttpServerEnabled: false);
+        SettingsFile.Save(Path_, saved);
+
+        var result = SettingsFile.TryLoad(Path_);
+
+        Assert.Equal(SettingsLoadStatus.Loaded, result.Status);
+        Assert.Equal(saved, result.Settings);
+        Assert.True(result.CanSave);
+    }
+
+    [Fact]
+    public void TryLoad_AnExistingFileThatCannotBeRead_IsUnreadableAndNotSafeToSave()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path_, "http-server = off\n");
+        var diagnostics = new List<string>();
+
+        using var exclusive = new FileStream(Path_, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var result = SettingsFile.TryLoad(Path_, diagnostics.Add);
+
+        Assert.Equal(SettingsLoadStatus.Unreadable, result.Status);
+        Assert.Equal(Settings.Default, result.Settings);
+        Assert.False(result.CanSave);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(IOException), diagnostic);
+    }
+
+    [Fact]
+    public void LoadOrCreate_AnExistingFileThatCannotBeRead_ReportsItAndLeavesTheFileUntouched()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path_, "http-server = off\n");
+        var diagnostics = new List<string>();
+        Settings settings;
+
+        using (new FileStream(Path_, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            settings = SettingsFile.LoadOrCreate(Path_, diagnostics.Add);
+        }
+
+        Assert.Equal(Settings.Default, settings);
+        Assert.Equal(nameof(IOException), Assert.Single(diagnostics));
+        Assert.Equal("http-server = off\n", File.ReadAllText(Path_));
+    }
+
+    // Atomic write: a reader that still holds the old file open must keep seeing the old bytes, which
+    // only a write-to-temp-then-replace guarantees (WriteAllText truncates the same file in place).
+    [Fact]
+    public void Save_ReplacesTheFileInsteadOfRewritingItInPlace()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path_, "http-server = off\n");
+        using var reader = new FileStream(
+            Path_, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        SettingsFile.Save(Path_, Settings.Default with { HttpServerEnabled = true });
+
+        using var oldContent = new StreamReader(reader);
+        Assert.Equal("http-server = off\n", oldContent.ReadToEnd());
+        Assert.True(SettingsFile.Load(Path_).HttpServerEnabled);
+    }
+
+    [Fact]
+    public void Save_WhenTheReplaceFails_LeavesNoTemporaryFileBehind()
+    {
+        Directory.CreateDirectory(Path_);
+
+        SettingsFile.Save(Path_, Settings.Default);
+
+        Assert.Empty(Directory.GetFiles(_directory));
+        Assert.True(Directory.Exists(Path_));
+    }
 }
