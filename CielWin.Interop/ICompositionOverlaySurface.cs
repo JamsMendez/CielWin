@@ -44,4 +44,11 @@ public interface IMiniSceneSurface : ICompositionOverlaySurface, IDisposable
 
     /// <summary>Moves/resizes the window in real pixels, topmost and without activation.</summary>
     bool Place(Rectangle bounds);
+
+    /// <summary>
+    /// Whether the window re-claims the top of the topmost band when another window takes the
+    /// foreground. False before creation, after dispose, or when that hook could not be installed (the
+    /// window is then still placed topmost, just not re-asserted).
+    /// </summary>
+    bool ReassertsTopmost { get; }
 }

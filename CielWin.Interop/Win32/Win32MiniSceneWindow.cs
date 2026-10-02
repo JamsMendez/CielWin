@@ -161,25 +161,31 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
             _hwnd, new HWND(MiniSceneWindowStyles.InsertAfterTopmost),
             bounds.Left, bounds.Top, bounds.Width, bounds.Height, MiniSceneWindowStyles.PlacementFlags);
 
+    public bool ReassertsTopmost => !_disposed && !_foregroundHook.IsNull;
+
     /// <summary>
     /// Out-of-context hook on foreground changes: its callback is delivered through this (UI) thread's
     /// message loop, so it runs on the same thread as every other member. A failed hook only loses the
-    /// re-claiming (traced nowhere: placement still works, the user can re-place with the hotkeys).
+    /// re-claiming (placement still works, the user can re-place with the hotkeys); it shows as
+    /// <see cref="ReassertsTopmost"/> false, which the owner traces.
     /// </summary>
     private void InstallForegroundHook()
     {
-        _foregroundProc = (_, _, hwnd, _, _, _, _) =>
-        {
-            if (!_disposed && MiniSceneWindowStyles.ShouldReassertTopmost((nint)hwnd.Value, (nint)_hwnd.Value))
-            {
-                PInvoke.SetWindowPos(
-                    _hwnd, new HWND(MiniSceneWindowStyles.InsertAfterTopmost), 0, 0, 0, 0,
-                    MiniSceneWindowStyles.ReassertFlags);
-            }
-        };
+        _foregroundProc = (_, _, hwnd, _, _, _, _) => OnForegroundChanged((nint)hwnd.Value);
         _foregroundHook = PInvoke.SetWinEventHook(
             PInvoke.EVENT_SYSTEM_FOREGROUND, PInvoke.EVENT_SYSTEM_FOREGROUND, HMODULE.Null, _foregroundProc,
             0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
+    }
+
+    /// <summary>The foreground hook's callback: re-claims the top when ANOTHER window took the foreground.</summary>
+    internal void OnForegroundChanged(nint foreground)
+    {
+        if (!_disposed && MiniSceneWindowStyles.ShouldReassertTopmost(foreground, (nint)_hwnd.Value))
+        {
+            PInvoke.SetWindowPos(
+                _hwnd, new HWND(MiniSceneWindowStyles.InsertAfterTopmost), 0, 0, 0, 0,
+                MiniSceneWindowStyles.ReassertFlags);
+        }
     }
 
     public object? AddCompositionOverlayVisual()

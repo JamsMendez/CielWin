@@ -153,6 +153,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
             return false;
         }
 
+        // Still usable, but other topmost windows coming to the foreground can then cover it.
+        if (!surface.ReassertsTopmost) _trace?.Invoke("mini-window: foreground hook unavailable");
         _ = AttachAsync(surface);
         return true;
     }
