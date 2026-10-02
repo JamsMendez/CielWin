@@ -84,6 +84,44 @@ a failing imported sound (`MediaFailed`, missing file) falls back to the built-i
 - Manual check (2026-10-02): Release build from this branch, `POST /v1/alerts` failed then warning (both 202);
   user confirmed both sounds were heard. No `alert sound-failed` in `trace.log`. Mute toggle not yet checked by hand.
 
+## Stage 2: import only (user decision 2026-10-02)
+
+No built-in sounds ship (copyright): the app is silent until the user imports a sound. Stage 1's embedded sounds are
+removed. Stage 1 is NOT merged separately; stage 2 continues on this branch (single PR).
+
+Decisions:
+- Formats: `.wav`, `.mp3`, `.m4a` (the user's own sounds are m4a; WPF `MediaPlayer` plays all three).
+- Each kind plays only its own imported sound; a kind with no sound stays silent (no cross-kind fallback).
+- Imported files are copied to `%LOCALAPPDATA%\CielWin\sounds\` so moving/deleting the original does not break them.
+- The "Alert sounds" mute toggle is hidden until at least one sound is imported.
+- A missing or unplayable imported file is traced (type name / reason code only) and stays silent; never throws.
+
+Open before merge: the user's m4a/wav are in this branch's history (`3155617`, `ec2b051`'s ancestors). They must not
+reach `main`/remote history: squash or rewrite the branch before merging (needs user approval).
+
+- [x] I1 Remove built-in sounds: `CielWin.App/Assets/Sounds/*`, the csproj embedding, `EmbeddedAlertSoundPlayer`,
+      `tools/alert-sounds/**`, and their tests. Route: delegated writer.
+- [x] I2 Sound library: settings keys for the imported failed/warning sound file names; importer that validates the
+      extension and copies into the sounds folder (replacing the previous one of that kind); remove per kind.
+      Route: same writer.
+- [x] I3 Player: `MediaPlayer`-based `IAlertSoundPlayer` that plays the imported sound of the kind; missing file or
+      `MediaFailed` traced and silent. Route: same writer.
+- [x] I4 Tray: "Import failed sound…", "Import warning sound…" (file dialog), "Remove failed/warning sound" only when
+      that kind is imported, "Alert sounds" toggle only when at least one is imported. Route: same writer.
+
+- I1-I4 done (route: delegated writer). Commits (pre-rewrite ids) `a775c2d` remove built-in sounds, `4720c1d` import
+  (I2+I3), `4532fa7` tray entries. Settings keys `failed-sound` / `warning-sound` (bare file name; paths, `..` or
+  other extensions read as no sound). `AlertSoundLibrary` (folder `%LOCALAPPDATA%\CielWin\sounds`, copy to temp then
+  move over `<kind>.<ext>`, other extensions of that kind deleted). `MediaAlertSoundPlayer` behind `IAlertSoundOutput`
+  (one `MediaPlayer` per kind, volume 1.0, closed after play/fail); traces `alert sound-skipped kind=X
+  reason=missing-file`, `alert sound-failed kind=X error=<Type>`. Tray: imports, removes (only when that kind has a
+  sound), mute toggle (only when any sound); `item.Available` set on open. README updated.
+  RED: CS0246 `MediaAlertSoundPlayer`/`IAlertSoundOutput`; CS0117 new `TrayMenuEntry` members. I1 deletion: no RED.
+  GREEN: App 586 passed, Interop 189 + 16 skipped, `dotnet build --no-incremental` 0 warnings.
+  Untested by design: real `MediaPlayer` and `OpenFileDialog` (manual check). Known risk: re-importing a kind while
+  its sound plays may hit a file lock (traced `import-failed`, previous sound kept).
+- History rewrite approved by the user (2026-10-02): purge every sound file from `main..feat/alert-sounds`.
+
 ## Next step
 
-Stage 2 (import .wav/.mp3), or merge stage 1 to `main` first (user decides).
+Rewrite history, verify, then the user's manual check of import/play/remove/menu visibility.
