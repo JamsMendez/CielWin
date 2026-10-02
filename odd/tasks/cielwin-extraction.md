@@ -109,8 +109,12 @@ Slice boundaries are recorded per task below once PRs exist.
   approved+ack; `5050641..86320dd` approved+ack. `86320dd..4dc7414` (4 lenses): correction_required,
   then terminal `corrupted_or_unverifiable_authority` (gentle-ai 3.7.0 defect, existing issue #4571;
   occurrence comment posted, then deleted at user request; re-report only if it reproduces on v4.x). Candidate declined (declined_this_candidate); that
-  range stays unreviewed and the triggering findings are unknown. Pending: `4dc7414..12dc958`,
-  `12dc958..cee39af`, `cee39af..c1ccbd2`.
+  range stays unreviewed and the triggering findings are unknown.
+- Reviews on gentle-ai 4.0.0 (2026-10-01): `4dc7414..12dc958` (4 lenses) approved+ack;
+  `12dc958..cee39af` (1 lens) correction_required -> terminal `corrupted_or_unverifiable_authority`
+  again (#4571 reproduces on v4.0.0; occurrence comment posted with user consent, issuecomment-5946179272),
+  declined_this_candidate, stays unreviewed with unknown findings; `cee39af..c1ccbd2` (4 lenses)
+  approved+ack; `c1ccbd2..3ce61fd` (1 lens) approved+ack.
 
 - T5b done (commits in `git log`: `fix(interop)`, `fix(settings)`, `fix(alerts)`, `fix(scene)`): each fix test-first with
   observed RED. Fixed: mini window releases HWND/class on failed composition setup (and on CreateWindow failure);
@@ -138,24 +142,21 @@ Slice boundaries are recorded per task below once PRs exist.
   down and nothing recreates it. `:307`: navigation has no timeout. Fix in T7 (recovery like the mini).
 - NOT A DEFECT (T5b) T5 `processing/js/main.js:71-108`: a throwing scene layer leaves canvas save/restore unbalanced.
 - FIXED (T5b) T5 `explorer/js/animate.js:175-177` cache key committed before mask build (and idle); `earth.js:318-319` mini basis (and idle). Unflagged same-pattern: `rings.js` uses `sceneBasis(W,H)` in mini for ruler/paragraph/outer ring sizes (left as is).
+- Idle slice (`4dc7414..12dc958`, informational): misleading "verbatim" headers in `idle/js/animate.js:1-6`
+  and `rings.js:1-3`; `IdleSceneNodeTests.cs:34-44` timeout budget/rationale understated (R2/R3/R4);
+  unused processId tuple element; mini-fit magic numbers and duplicated layer config in `idle-scene.tests.js`;
+  mini ruler basis mismatch untested (`rings.js:356-361`).
+- Raphael slice (`cee39af..c1ccbd2`, informational): `raphael/js/sprites.js:353-370` retries a failed bake
+  every frame (R3/R4 warning); `nebula.js:282-284` disables itself permanently and silently (R3 warning);
+  stale comments/literals in `raphael-scene.tests.js:344-357,485-490`; triplicate cycle-rate helpers
+  `feathers.js:32-49`; `RaphaelSceneNodeTests.cs:70,93-97` suggestions.
+- T5b slice (`c1ccbd2..3ce61fd`, informational): R3-001 `AlertLayerPreloadState.cs:100-103`,
+  R3-002 `SettingsFile.cs:81-82` (warnings).
 
-## Next step (resume here — session ended 2026-10-02)
-State: branch `feat/cielwin-extraction`, HEAD `3ce61fd`, working tree clean, build 0 warnings,
-tests green (Interop 172 + 14 skipped real-desktop, App 286). gentle-ai installed: 3.7.0.
-1. Upgrade gentle-ai to v4.0.0 (user request), then run `gentle-ai sync` (v4 release notes require
-   it; v4 retires SDD, ODD only). Re-check `gentle-ai review mode status`.
-2. Pending reviews (RDD on, user grants consents while present). Keep each candidate <= ~3k changed
-   lines (lens_context_budget_exceeded near ~3.5k). Detach HEAD at the slice tip, assess with
-   `--base-ref <prev> --committed-only`, follow returned transitions, launch captures concurrently:
-   - `4dc7414..12dc958` (idle animation+rings, idle harness, ~2.2k)
-   - `12dc958..cee39af` (raphael page/core + layers/glyph rings, ~2.8k)
-   - `cee39af..c1ccbd2` (raphael feathers/nebula/sprites + harness, ~1.9k)
-   - `c1ccbd2..3ce61fd` (T5b fixes, ~900)
-   - `86320dd..4dc7414` stays unreviewed (declined after gentle-ai #4571 terminal stop). If #4571
-     reproduces on v4.x, comment on #4571 (user decision); token at the user's Documents\Claude\gh-token, no gh CLI.
-   Return to the branch (`git switch feat/cielwin-extraction`) after reviews.
-3. T6 Mini (reuse `MiniProcessFailurePolicy` added in T5b), then T7 (composition root must honour
+## Next step (resume here — updated 2026-10-01)
+State: branch `feat/cielwin-extraction`, gentle-ai 4.0.0 synced, RDD on. All slice reviews done
+(see Progress). Unreviewed ranges: `86320dd..4dc7414`, `12dc958..cee39af` (#4571).
+1. T6 Mini (reuse `MiniProcessFailurePolicy` added in T5b), then T7 (composition root must honour
    `SettingsLoadResult.CanSave`), T8 README.
-4. Backup branches `backup/t5-unsplit`, `backup/scenes-unsplit` can be deleted once reviews finish.
-5. Engram mirror is pending (engram MCP disconnected this session): re-save this document to topic
-   `odd/cielwin-extraction/tasks`.
+2. Backup branches `backup/t5-unsplit`, `backup/scenes-unsplit` can be deleted (user decision).
+3. Engram mirror: re-save this document to topic `odd/cielwin-extraction/tasks` when engram is available.
