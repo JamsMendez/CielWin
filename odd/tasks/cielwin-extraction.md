@@ -108,7 +108,7 @@ Slice boundaries are recorded per task below once PRs exist.
 - Reviews: `770508d..25795b6` (4 lenses) approved+ack; `..79e30c9` approved+ack; `..5050641` (4 lenses)
   approved+ack; `5050641..86320dd` approved+ack. `86320dd..4dc7414` (4 lenses): correction_required,
   then terminal `corrupted_or_unverifiable_authority` (gentle-ai 3.7.0 defect, existing issue #4571;
-  occurrence comment posted with user consent). Candidate declined (declined_this_candidate); that
+  occurrence comment posted, then deleted at user request; re-report only if it reproduces on v4.x). Candidate declined (declined_this_candidate); that
   range stays unreviewed and the triggering findings are unknown. Pending: `4dc7414..12dc958`,
   `12dc958..cee39af`, `cee39af..c1ccbd2`.
 

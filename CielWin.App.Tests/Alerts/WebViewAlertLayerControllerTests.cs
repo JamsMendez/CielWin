@@ -280,7 +280,7 @@ public sealed class WebViewAlertLayerControllerTests
         Assert.Contains("_state.Failed()", source);
         Assert.Contains("_state.Created()", source);
         Assert.Contains("TearDown(\"create-failed\", dropEnvironment: true)", source);
-        Assert.Contains("TearDown(\"process-failed\", dropEnvironment: true)", source);
+        Assert.Contains("RecoverFromRuntimeFailure(\"process-failed\", dropEnvironment: true)", source);
         Assert.Contains("TearDown(\"host-changed\")", source);
         Assert.DoesNotContain("TearDown(\"host-changed\", dropEnvironment: true)", source);
     }
@@ -445,5 +445,34 @@ public sealed class WebViewAlertLayerControllerTests
         var messageStart = source.IndexOf("private void OnMessage(", StringComparison.Ordinal);
         var messageBody = source[messageStart..source.IndexOf("private void TryMarkReady()", messageStart, StringComparison.Ordinal)];
         Assert.DoesNotContain("IsVisible = false", messageBody);
+    }
+
+    /// <summary>
+    /// Wiring guard for the bounded self-recovery (the decisions themselves are tested on the pure
+    /// <see cref="AlertLayerPreloadState"/> in <c>AlertLayerRecoveryTests</c>): a process failure and a
+    /// hung navigation both go through <c>RuntimeFailed()</c>, only page-fatal process kinds spend the
+    /// budget, and the poll is what notices a navigation that never completes.
+    /// </summary>
+    [Fact]
+    public void ProcessFailureAndNavigationTimeoutShareTheBoundedRecoveryPath()
+    {
+        var source = ReadControllerSource();
+        var failed = source.IndexOf("private void OnProcessFailed(", StringComparison.Ordinal);
+        var failedBody = source[failed..source.IndexOf("private void OnMessage(", failed, StringComparison.Ordinal)];
+        Assert.Contains("MiniProcessFailurePolicy.RequiresRecovery(args.ProcessFailedKind)", failedBody);
+        Assert.Contains("_state.RuntimeFailed()", failedBody);
+        Assert.DoesNotContain("_state.Failed()", failedBody);
+
+        var poll = source.IndexOf("private void Poll()", StringComparison.Ordinal);
+        var pollBody = source[poll..source.IndexOf("private async Task CreateAsync(", poll, StringComparison.Ordinal)];
+        Assert.Contains("_state.NavigationTimedOut", pollBody);
+        Assert.Contains("RecoverFromRuntimeFailure(\"navigation-timeout\", dropEnvironment: true)", pollBody);
+
+        // Both host navigations arm the deadline; a non-superseded completion disarms it.
+        Assert.Equal(2, source.Split("_state.NavigationStarted();").Length - 1);
+        var completed = source.IndexOf("private void OnNavigationCompleted(", StringComparison.Ordinal);
+        var finished = source.IndexOf("_state.NavigationFinished();", completed, StringComparison.Ordinal);
+        var superseded = source.IndexOf("_navigation.CompletedIsSuperseded(", completed, StringComparison.Ordinal);
+        Assert.True(finished > superseded, "a superseded completion must not disarm the live navigation's deadline");
     }
 }

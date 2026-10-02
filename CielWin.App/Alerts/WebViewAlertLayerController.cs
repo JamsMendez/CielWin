@@ -4,6 +4,7 @@ using CielWin.Interop;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
+using CielWin.App.Wallpaper;
 using Microsoft.Web.WebView2.Core;
 
 namespace CielWin.App.Alerts;
@@ -165,6 +166,7 @@ public sealed class WebViewAlertLayerController : IDisposable
         // TryMarkReady re-shows it once the new page is ready.
         _state.PageReloading();
         _navigateStopwatch = Stopwatch.StartNew();
+        _state.NavigationStarted();
         _navigation.BeforeHostNavigate();
         _controller.CoreWebView2.Navigate(SceneUrl(_currentScene));
     }
@@ -232,6 +234,14 @@ public sealed class WebViewAlertLayerController : IDisposable
             if (_state.HostChanged(hwnd, generation) && _controller is not null)
             {
                 TearDown("host-changed");
+            }
+            if (_controller is not null && _state.NavigationTimedOut)
+            {
+                // A navigation that never completes leaves a live controller that is never ready and
+                // that nothing else would replace: treat it like a process failure.
+                _trace?.Invoke(AlertLayerTrace.NavigationTimeout(_navigateStopwatch?.ElapsedMilliseconds ?? 0));
+                RecoverFromRuntimeFailure("navigation-timeout", dropEnvironment: true);
+                return;
             }
             if (!_host.IsCompositionReady || hwnd == 0)
             {
@@ -309,6 +319,7 @@ public sealed class WebViewAlertLayerController : IDisposable
             // The page loads idle and is driven by show/hide messages once it is ready. The scene
             // segment comes from the closed enum -> folder-name mapping (SceneUrl), so it can never
             // inject an unexpected path segment or query into this URL.
+            _state.NavigationStarted();
             _navigation.BeforeHostNavigate();
             _controller.CoreWebView2.Navigate(SceneUrl(_currentScene));
         }
@@ -354,10 +365,10 @@ public sealed class WebViewAlertLayerController : IDisposable
             }
             _trace?.Invoke(AlertLayerTrace.NavigationCompleted(
                 args.NavigationId, args.IsSuccess, args.WebErrorStatus, _navigateStopwatch?.ElapsedMilliseconds ?? 0));
+            _state.NavigationFinished();
             if (!args.IsSuccess)
             {
-                _state.Failed();
-                TearDown("navigation-failed");
+                RecoverFromRuntimeFailure("navigation-failed", dropEnvironment: false);
                 return;
             }
             _navigationCompleted = true;
@@ -371,10 +382,26 @@ public sealed class WebViewAlertLayerController : IDisposable
         try
         {
             _trace?.Invoke(AlertLayerTrace.ProcessFailed(args.ProcessFailedKind, args.Reason));
-            _state.Failed();
-            TearDown("process-failed", dropEnvironment: true);
+            if (!MiniProcessFailurePolicy.RequiresRecovery(args.ProcessFailedKind))
+            {
+                // WebView2 restarts its own helpers; tearing the page down would only burn the budget.
+                _trace?.Invoke(AlertLayerTrace.ProcessFailureIgnored(args.ProcessFailedKind));
+                return;
+            }
+            RecoverFromRuntimeFailure("process-failed", dropEnvironment: true);
         }
         catch (Exception ex) { Debug.WriteLine(ex); _trace?.Invoke(AlertLayerTrace.Error("process-failed", ex)); }
+    }
+
+    /// <summary>
+    /// A live layer failed (dead process, hung or failed navigation): tear it down and let the poll
+    /// recreate it with backoff, while the state's bounded budget allows. Once spent the layer stays
+    /// down (traced) instead of recreating a renderer that keeps dying.
+    /// </summary>
+    private void RecoverFromRuntimeFailure(string reason, bool dropEnvironment)
+    {
+        if (!_state.RuntimeFailed()) _trace?.Invoke(AlertLayerTrace.RecoveryExhausted());
+        TearDown(reason, dropEnvironment);
     }
 
     private void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs args)

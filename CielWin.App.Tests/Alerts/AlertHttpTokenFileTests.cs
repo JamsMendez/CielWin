@@ -432,4 +432,28 @@ public sealed class AlertHttpTokenFileTests : IDisposable
         Assert.Single(diagnostics);
         Assert.False(File.Exists(TokenPath));
     }
+
+    /// <summary>
+    /// The previous holder died (thread exit) while owning the lock. .NET still grants ownership to
+    /// the waiter via <see cref="AbandonedMutexException"/>; the loader must treat that as acquired
+    /// and carry on, not report a timeout or throw. Deterministic: a thread that never releases.
+    /// </summary>
+    [Fact]
+    public void LockAbandonedByAHolderThatDied_IsAcquiredAndTheTokenIsCreated()
+    {
+        var lockName = $@"Local\CielWin.AlertHttpToken.Test.{Guid.NewGuid():N}";
+        // Kept open on purpose: closing the last handle while owned destroys the mutex instead of
+        // abandoning it.
+        using var mutex = new Mutex(initiallyOwned: false, lockName);
+        var holder = new Thread(() => mutex.WaitOne()) { IsBackground = true };
+        holder.Start();
+        Assert.True(holder.Join(TimeSpan.FromSeconds(5)));
+
+        var diagnostics = new List<string>();
+        var token = AlertHttpTokenFile.LoadOrCreate(TokenPath, diagnostics.Add, lockName, TimeSpan.FromSeconds(2));
+
+        Assert.NotNull(token);
+        Assert.Empty(diagnostics);
+        Assert.Equal(token, File.ReadAllText(TokenPath).Trim());
+    }
 }

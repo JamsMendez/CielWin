@@ -57,5 +57,13 @@ internal static class AlertLayerTrace
     public static string Error(string context, Exception exception) =>
         $"alert-layer error {context}: {exception.GetType().Name}: {exception.Message}";
 
+    public static string ProcessFailureIgnored(object kind) =>
+        $"alert-layer process failure ignored (helper restarts itself) kind={kind}";
+
+    public static string NavigationTimeout(long elapsedMilliseconds) =>
+        $"alert-layer navigation timed out after {elapsedMilliseconds}ms";
+
+    public static string RecoveryExhausted() => "alert-layer recovery exhausted, staying down";
+
     public static string NoOverlayVisual() => "alert-layer create failed: no overlay visual";
 }

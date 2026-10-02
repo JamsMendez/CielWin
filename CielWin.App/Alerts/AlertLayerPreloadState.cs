@@ -17,7 +17,22 @@ namespace CielWin.App.Alerts;
 /// </remarks>
 public sealed class AlertLayerPreloadState(Func<DateTimeOffset>? clock = null)
 {
+    /// <summary>At most this many runtime failures are recovered from in one burst; a renderer that keeps dying gives up instead of looping.</summary>
+    public const int MaxRecoveries = 2;
+
+    /// <summary>A runtime failure at least this long after the previous one starts a new burst, so a layer that ran stably this long gets its full budget back.</summary>
+    public static readonly TimeSpan StableWindow = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// A navigation that has neither completed nor failed after this long is hung (a local-folder page
+    /// loads in well under a second; this only has to outlast a cold WebView2 on a busy machine).
+    /// </summary>
+    public static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(30);
+
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private int _recoveries;
+    private DateTimeOffset? _lastRuntimeFailureAt;
+    private DateTimeOffset? _navigationDeadline;
     private bool _hostKnown;
     private nint _hwnd;
     private int _generation;
@@ -32,8 +47,14 @@ public sealed class AlertLayerPreloadState(Func<DateTimeOffset>? clock = null)
     /// <summary>The layer is currently supposed to be shown (<c>IsVisible = true</c> on the real controller).</summary>
     public bool Visible { get; private set; }
 
-    /// <summary>Whether creation/recreation may be attempted right now -- false while backing off after <see cref="Failed"/>.</summary>
-    public bool CanCreate => _clock() >= _retryAfter;
+    /// <summary>The recovery budget is spent: the layer stays down until the host changes (see <see cref="RuntimeFailed"/>).</summary>
+    public bool GaveUp { get; private set; }
+
+    /// <summary>Whether creation/recreation may be attempted right now -- false while backing off after <see cref="Failed"/>, and for good once <see cref="GaveUp"/>.</summary>
+    public bool CanCreate => !GaveUp && _clock() >= _retryAfter;
+
+    /// <summary>A navigation was started and neither completed nor failed within <see cref="NavigationTimeout"/>.</summary>
+    public bool NavigationTimedOut => _navigationDeadline is { } deadline && _clock() >= deadline;
 
     /// <summary>
     /// True the FIRST time it is called (nothing was known yet), and again every time the host's
@@ -46,16 +67,51 @@ public sealed class AlertLayerPreloadState(Func<DateTimeOffset>? clock = null)
         _hostKnown = true;
         _hwnd = hwnd;
         _generation = generation;
+        // A new host (first attach, Explorer restart) is a fresh surface: failures on the previous
+        // one say nothing about it, so a layer that gave up gets another go.
+        _recoveries = 0;
+        _lastRuntimeFailureAt = null;
+        GaveUp = false;
         return true;
     }
 
     /// <summary>Creation or the live process failed: not ready, not visible, and back off exponentially before the next attempt (500ms, 1000ms, ... capped at 8000ms).</summary>
     public void Failed()
     {
-        Ready = false;
-        Visible = false;
+        // Requeue a showing alert BEFORE clearing Visible: ControllerLost keys on Visible, and the
+        // controller calls Failed() ahead of its teardown, so clearing it here dropped the alert.
+        ControllerLost();
         _retryAfter = _clock().AddMilliseconds(Math.Min(8000, 500 * (1 << Math.Min(_failures++, 4))));
     }
+
+    /// <summary>
+    /// The live layer failed AFTER it was created (the WebView2 process died, or a navigation hung or
+    /// failed). Backs off like <see cref="Failed"/> and returns true while the bounded budget
+    /// (<see cref="MaxRecoveries"/> per <see cref="StableWindow"/>) allows another recreate; once spent,
+    /// returns false and <see cref="CanCreate"/> stays false so a persistently broken renderer does not
+    /// loop forever. Creation failures keep using <see cref="Failed"/> alone (backoff, no cap).
+    /// </summary>
+    public bool RuntimeFailed()
+    {
+        var now = _clock();
+        if (_lastRuntimeFailureAt is { } last && now - last >= StableWindow) _recoveries = 0;
+        _lastRuntimeFailureAt = now;
+        Failed();
+        if (_recoveries >= MaxRecoveries)
+        {
+            GaveUp = true;
+            return false;
+        }
+
+        _recoveries++;
+        return true;
+    }
+
+    /// <summary>A host navigation began (creation or scene switch): arms <see cref="NavigationTimedOut"/>, restarting it when one was already armed.</summary>
+    public void NavigationStarted() => _navigationDeadline = _clock() + NavigationTimeout;
+
+    /// <summary>The live navigation completed (successfully or not): nothing is hung any more.</summary>
+    public void NavigationFinished() => _navigationDeadline = null;
 
     /// <summary>A creation attempt succeeded well enough to proceed to navigation: resets the backoff so a LATER failure starts counting from the first step again.</summary>
     public void Created() => _failures = 0;
@@ -132,6 +188,7 @@ public sealed class AlertLayerPreloadState(Func<DateTimeOffset>? clock = null)
     public void ControllerLost()
     {
         Ready = false;
+        _navigationDeadline = null;
         if (Visible && _shown is { } shown) _pending = shown;
         Visible = false;
         _shown = null;
