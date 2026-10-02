@@ -61,7 +61,7 @@ Slice boundaries are recorded per task below once PRs exist.
       Route: delegated writer.
 - [x] T7 Composition root, Alt+M / Alt+Shift+M hotkeys, tray, fullscreen pause, wiring tests.
       Route: delegated writer.
-- [ ] T8 README: install, settings, HTTP API examples, hotkeys. Route: inline.
+- [x] T8 README: install, settings, HTTP API examples, hotkeys. Route: inline.
 
 ## Acceptance criteria
 - `dotnet build` and `dotnet test` green.
@@ -179,6 +179,11 @@ Slice boundaries are recorded per task below once PRs exist.
   (RED: `WaitHandleCannotBeOpenedException`; GREEN 7/7). Open: WARNING R3-002 `App.xaml.cs:27` a throwing
   `ProductionComposition.Wire` crashes startup with no trace line; suggestions `FileTrace.cs:49`,
   `StartupSettingsTests.cs:39-49`.
+- T8 done (route: delegated writer, reading prepared the write): `README.md`, passive docs, structural check against
+  source passed. It found the settings template naming `alert-http.token` instead of `http.token`: FIXED test-first
+  (RED 1 failed, GREEN; full suite App 480, Interop 182 + 16 skipped). Noted, not changed: 503 "alerts are disabled"
+  is unreachable (port closed when off); scene route answers 202 for the active scene; busy alerts get 202 and are
+  dropped (intended, `AlertQueue`); settings are read only at startup (no watcher).
 - T7 reviews: `a728b2e..d9f2496` (hotkeys+tray, 1 lens) approved+ack; `d9f2496..1248a4a` (composition, 1 lens)
   approved+ack; `1248a4a..3f2850f` (production entry, 387 lines) assessed medium `under_budget`, pending in the
   next slice. Informational: WARNING `Win32HotkeyRegistrar.cs:113-119` swallows errors silently, WARNING
@@ -193,6 +198,7 @@ Slice boundaries are recorded per task below once PRs exist.
 ## Next step (resume here — updated 2026-10-01)
 State: branch `feat/cielwin-extraction`, gentle-ai 4.0.0 synced, RDD on. All slice reviews done
 (see Progress). Unreviewed ranges: `86320dd..4dc7414`, `12dc958..cee39af` (#4571).
-1. T8 README; resolve T7 open product questions with the user.
+1. All tasks done. Resolve remaining T7 open product questions with the user; follow-up warnings above;
+   decide the merge to `main` (user call, app must be functional — run it first).
 2. Backup branches `backup/t5-unsplit`, `backup/scenes-unsplit` can be deleted (user decision).
 3. Engram mirror: re-save this document to topic `odd/cielwin-extraction/tasks` when engram is available.
