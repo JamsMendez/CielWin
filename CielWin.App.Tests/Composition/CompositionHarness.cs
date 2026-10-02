@@ -240,6 +240,7 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
     public int Hides { get; private set; }
     public int DisposeCalls { get; private set; }
     public bool SwitchResult { get; set; } = true;
+    public bool ThrowOnMove { get; set; }
     public bool IsReady => harness.MiniReady;
 
     public bool Show(WallpaperScene scene, Rectangle bounds)
@@ -254,7 +255,12 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
         return SwitchResult;
     }
 
-    public void MoveTo(Rectangle bounds) => Moves.Add(bounds);
+    public void MoveTo(Rectangle bounds)
+    {
+        if (ThrowOnMove) throw new InvalidOperationException("move failed");
+        Moves.Add(bounds);
+    }
+
     public void ShowAlert(AlertShowRequest request) => Alerts.Add(request);
     public void HideAlert() => Hides++;
     public void Dispose() => DisposeCalls++;

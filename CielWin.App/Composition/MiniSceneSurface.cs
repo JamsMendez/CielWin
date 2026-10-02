@@ -84,7 +84,8 @@ internal sealed class MiniSceneSurface(
     /// <summary>
     /// Moves the window to <paramref name="next"/>. Refused (false, traced) while the window failed to
     /// show or its browser is not attached, so a position is never persisted for a window that is not
-    /// really there.
+    /// really there. A failing display read or move is refused the same way: it runs as a posted
+    /// dispatcher operation, where an escaping exception would end the app.
     /// </summary>
     public bool TryMoveTo(MiniPosition next)
     {
@@ -94,9 +95,18 @@ internal sealed class MiniSceneSurface(
             return false;
         }
 
-        var bounds = Placement(next);
-        window.MoveTo(bounds);
-        _placed = bounds;
+        try
+        {
+            var bounds = Placement(next);
+            window.MoveTo(bounds);
+            _placed = bounds;
+        }
+        catch (Exception error)
+        {
+            trace($"mini-position move-failed error={error.GetType().Name}");
+            return false;
+        }
+
         Position = next;
         return true;
     }

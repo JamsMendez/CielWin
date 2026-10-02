@@ -49,8 +49,9 @@ public static partial class ProductionComposition
             CreateHttpServer = options => new LocalHttpCommandServer(
                 options.Port, options.Token, options.HandleAlert, options.Diagnostic,
                 handleWallpaperSceneSwitch: options.HandleSceneSwitch),
-            CreateHotkeys = () => new Win32HotkeyRegistrar(),
-            BuildTray = controller => new TrayIconHost(controller),
+            CreateHotkeys = () => new Win32HotkeyRegistrar(
+                errorType => trace.Record($"hotkey handler-failed error={errorType}")),
+            BuildTray = controller => new TrayIconHost(controller, trace.Record),
             Shutdown = shutdown,
         };
 
