@@ -56,7 +56,7 @@ Slice boundaries are recorded per task below once PRs exist.
       scene/alert web assets, node scene tests. Route: delegated writer.
 - [x] T5b Review follow-ups (user request): fix the actionable review warnings listed under
       Follow-ups, with tests. Route: delegated writer.
-- [ ] T6 Mini: controller, browser, placement with `Previous`, failure policy, tests.
+- [x] T6 Mini: controller, browser, placement with `Previous`, failure policy, tests.
       Route: delegated writer.
 - [ ] T7 Composition root, Alt+M / Alt+Shift+M hotkeys, tray, fullscreen pause, wiring tests.
       Route: delegated writer.
@@ -126,6 +126,13 @@ Slice boundaries are recorded per task below once PRs exist.
   save/restore (every scene catch already calls `resetCanvasStateForFrame`), "nothing recreates the layer" (the 250 ms poll
   already recreated it, only the cap was missing).
 
+- T6 done (route: delegated writer; 2+ non-trivial files): RED = CS0246 (`MiniSceneWindowController`, `IMiniSceneBrowser`
+  missing); GREEN = 71 focused tests; full suite App 357 (was 286), Interop 172 + 14 skipped, build 0 warnings.
+  Geometry uses `CielWin.Interop.Rectangle` (no layout `Rect`); `Show(scene, bounds)` has no fps (URL via
+  `SceneUrl(scene, "mini")`, fps=60); user data `%LOCALAPPDATA%\CielWin\WebView2Mini`. `MiniWindowPlacement.Previous`
+  is the exact inverse of `Next`. Dropped 3 duplicate tests already covered by `AlertLayerMessagesTests` /
+  `WebViewAlertLayerControllerTests`. `MiniModeWiringTests` deferred to T7.
+
 ## Follow-ups (non-blocking review advice)
 - FIXED (T5b) `AlertHttpTokenFile` abandoned-mutex path (`AlertHttpTokenFile.cs:137-144`) has no test.
 - FIXED (T5b) R3-001 `Win32MiniSceneWindow.cs:84-109`: a failed DirectComposition setup returns false but leaves
@@ -156,7 +163,7 @@ Slice boundaries are recorded per task below once PRs exist.
 ## Next step (resume here — updated 2026-10-01)
 State: branch `feat/cielwin-extraction`, gentle-ai 4.0.0 synced, RDD on. All slice reviews done
 (see Progress). Unreviewed ranges: `86320dd..4dc7414`, `12dc958..cee39af` (#4571).
-1. T6 Mini (reuse `MiniProcessFailurePolicy` added in T5b), then T7 (composition root must honour
+1. T7 (composition root must honour
    `SettingsLoadResult.CanSave`), T8 README.
 2. Backup branches `backup/t5-unsplit`, `backup/scenes-unsplit` can be deleted (user decision).
 3. Engram mirror: re-save this document to topic `odd/cielwin-extraction/tasks` when engram is available.
