@@ -36,6 +36,10 @@ MonitorFromWindow
 MONITOR_FROM_FLAGS
 GetMonitorInfo
 GetForegroundWindow
+SetWinEventHook
+UnhookWinEvent
+EVENT_SYSTEM_FOREGROUND
+WINEVENT_OUTOFCONTEXT
 GetShellWindow
 GetClassName
 PeekMessage
