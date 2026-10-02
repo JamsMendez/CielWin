@@ -139,6 +139,20 @@ the document are pre-rewrite and no longer exist.
   `Import_WhenThePreviousSoundOfAnotherExtensionIsLocked_StillCommitsTheNewSound` failed with `IOException`.
   GREEN: App 587 passed; build 0 warnings.
 
+- Follow-ups closed (route: delegated writer, user asked to cover them before the manual check):
+  - R3-failed-copy-test-does-not-prove-kept-setting: test now imports `previous.wav` first, then a missing
+    `gone.mp3`; asserts no new save, file intact, no `failed.mp3`, remove entry visible, next alert plays the
+    previous file. Passed on first run (guards existing behavior, no defect). Commit `6284ab3`.
+  - R3-foreground-hook-failure-silent-and-callback-untested: `IMiniSceneSurface.ReassertsTopmost`; callback moved to
+    `Win32MiniSceneWindow.OnForegroundChanged` (behavior unchanged); controller traces
+    `mini-window: foreground hook unavailable` once after create+place when false. RED: compile errors (Interop) and
+    `ShowTracesOnce...` failing (App). 4 real-desktop tests (`RequiresDesktop`, skipped while CielWin runs; run once
+    with the gate lifted temporarily: 4/4 passed). Commit `d6609f4`.
+  - Verification: `dotnet build --no-incremental` 0 warnings; App 589 passed; Interop 189 passed + 20 skipped; CI
+    filter `Category!=RequiresDesktop`: App 589, Interop 189 + 3 skipped. Parent spot check: 38 import/controller
+    tests pass.
+- Assess `64d538b..d6609f4`: medium, 193 lines, `review_due` false (`under_budget`); pending in the next slice.
+
 ## Next step
 
 User's manual check of import/play/remove/menu visibility.
