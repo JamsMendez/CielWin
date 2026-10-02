@@ -67,6 +67,23 @@ public sealed class AlertSoundLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Import_WhenThePreviousSoundOfAnotherExtensionIsLocked_StillCommitsTheNewSound()
+    {
+        var library = new AlertSoundLibrary(SoundsDirectory);
+        library.Import(AlertKind.Failed, Source("old.wav", "old"));
+
+        string name;
+        // A player still holding the previous file must not turn a finished copy into a failed import.
+        using (File.Open(Path.Combine(SoundsDirectory, "failed.wav"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            name = library.Import(AlertKind.Failed, Source("new.m4a", "new"));
+        }
+
+        Assert.Equal("failed.m4a", name);
+        Assert.Equal("new", File.ReadAllText(Path.Combine(SoundsDirectory, "failed.m4a")));
+    }
+
+    [Fact]
     public void Import_OfTheSameExtension_OverwritesTheContent()
     {
         var library = new AlertSoundLibrary(SoundsDirectory);

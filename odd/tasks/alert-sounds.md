@@ -129,6 +129,16 @@ the document are pre-rewrite and no longer exist.
   up to the I1 removal reference WAV resources that no longer exist in history, so those intermediate commits do not
   build on their own; the branch tip does.
 
+- Review `f683bb2..64d538b` (1429 lines, medium, `slice_budget_reached`): consent granted, 1 lens (reliability),
+  approved and acknowledged (lineage `review-ccee89bd33709b51`, authority burned). Findings (non-blocking):
+  R3-import-partial-commit-on-stale-delete (`AlertSoundLibrary.cs:83-90`, warning) FIXED below;
+  R3-failed-copy-test-does-not-prove-kept-setting (`AlertSoundImportWiringTests.cs:139-148`) and
+  R3-foreground-hook-failure-silent-and-callback-untested (`Win32MiniSceneWindow.cs:180-182`) left as follow-ups.
+- Fix: a stale other-extension file that cannot be deleted no longer fails an import that already moved the new
+  sound in (best-effort delete). Route: inline (one file + test). RED: new
+  `Import_WhenThePreviousSoundOfAnotherExtensionIsLocked_StillCommitsTheNewSound` failed with `IOException`.
+  GREEN: App 587 passed; build 0 warnings.
+
 ## Next step
 
 User's manual check of import/play/remove/menu visibility.

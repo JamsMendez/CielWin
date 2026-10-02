@@ -80,12 +80,14 @@ public sealed class AlertSoundLibrary(string directory)
             }
         }
 
+        // The new sound is already in place, so a stale file of another extension that cannot be deleted (a player
+        // still holding it) must not fail the import: it is left behind and cleared by the next import or remove.
         foreach (var extension in Extensions)
         {
             var other = PathOf(KindName(kind) + extension);
             if (!string.Equals(other, target, StringComparison.OrdinalIgnoreCase))
             {
-                File.Delete(other);
+                TryDelete(other);
             }
         }
 
@@ -114,7 +116,7 @@ public sealed class AlertSoundLibrary(string directory)
         }
         catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
         {
-            // The original failure is the one worth reporting; a stray temp file is harmless.
+            // Best effort: a stray temp or stale file is harmless, and the caller's outcome is already decided.
         }
     }
 }
