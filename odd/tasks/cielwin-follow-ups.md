@@ -72,6 +72,12 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   inspected (light: pale blur before, defined gold disc with dark rim after); `dotnet build` 0 warnings, 0 errors;
   `dotnet test CielWin.App.Tests --filter FullyQualifiedName~Tray` 33 passed.
 
+- Review `868364d..120cf29` (403 lines, medium, `slice_budget_reached`): consent granted, 1 lens (reliability),
+  approved and acknowledged (lineage `review-e3bb8ea10b6e96a8`, authority burned). Non-blocking suggestions:
+  R3-mini-move-partial-state `MiniSceneSurface.cs:98-108` (a `MoveTo` that throws after a partial move leaves
+  `Position` stale; only the throw-before-move case is tested); R3-ico-unverified `render-raphael-mini.mjs:259-296`
+  (no deterministic test for the small-frame contrast pass).
+
 ## Next step
 
 User's visual check of the F3b tray icon on a light taskbar; tick F3b and F3 if it reads well.
