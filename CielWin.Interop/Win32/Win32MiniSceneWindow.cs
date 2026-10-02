@@ -60,6 +60,17 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
     private IDCompositionVisual? _root;
     private IDCompositionVisual? _overlay;
 
+    private readonly Action<HWND>? _compositionSetupOverride;
+
+    public Win32MiniSceneWindow() { }
+
+    /// <summary>
+    /// Test seam: replaces the DirectComposition setup that runs right after the HWND exists, so a
+    /// failing setup can be forced without a broken GPU stack.
+    /// </summary>
+    internal Win32MiniSceneWindow(Action<HWND> compositionSetupOverride) =>
+        _compositionSetupOverride = compositionSetupOverride;
+
     public nint Hwnd => (nint)_hwnd.Value;
 
     public bool IsCompositionReady => !_disposed && _root is not null;
@@ -88,23 +99,39 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
         _hwnd = PInvoke.CreateWindowEx(
             MiniSceneWindowStyles.ExtendedStyle, _className, "CielWin Mini Scene", WINDOW_STYLE.WS_POPUP,
             bounds.Left, bounds.Top, bounds.Width, bounds.Height, HWND.Null, null, _hInstance, null);
-        if (_hwnd.IsNull) return false;
+        if (_hwnd.IsNull)
+        {
+            ReleaseNativeResources();
+            return false;
+        }
+
         PInvoke.SetLayeredWindowAttributes(_hwnd, default, 255, LAYERED_WINDOW_ATTRIBUTES_FLAGS.LWA_ALPHA);
 
         try
         {
-            // A null DXGI device is the documented way to get a device that only composes visuals
-            // (no surfaces), which is all a WebView2 visual target needs.
-            PInvoke.DCompositionCreateDevice(null!, out _device);
-            _device!.CreateTargetForHwnd(_hwnd, true, out _target);
-            _device.CreateVisual(out _root);
-            _target!.SetRoot(_root);
-            _device.Commit();
+            if (_compositionSetupOverride is { } setup)
+            {
+                setup(_hwnd);
+            }
+            else
+            {
+                // A null DXGI device is the documented way to get a device that only composes visuals
+                // (no surfaces), which is all a WebView2 visual target needs.
+                PInvoke.DCompositionCreateDevice(null!, out _device);
+                _device!.CreateTargetForHwnd(_hwnd, true, out _target);
+                _device.CreateVisual(out _root);
+                _target!.SetRoot(_root);
+                _device.Commit();
+            }
+
             CompositionGeneration++;
             return true;
         }
         catch
         {
+            // The caller (mini recovery) retries TryCreate. Leaving the HWND and the registered
+            // class behind would make that retry fail on a stale window and a duplicate class name.
+            ReleaseNativeResources();
             return false;
         }
     }
@@ -166,6 +193,12 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
         if (_disposed) return;
         RemoveCompositionOverlayVisual();
         _disposed = true;
+        ReleaseNativeResources();
+    }
+
+    /// <summary>Frees the composition objects, the window and the class; safe to call repeatedly.</summary>
+    private void ReleaseNativeResources()
+    {
         foreach (var com in new object?[] { _root, _target, _device })
         {
             (com as IDisposable)?.Dispose();

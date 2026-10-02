@@ -54,6 +54,8 @@ Slice boundaries are recorded per task below once PRs exist.
 - [x] T4 Settings: trimmed settings model + file + store, new mode names, tests. Route: delegated writer.
 - [x] T5 Scene + alert layer: alert parser/queue/tile layout, WebView2 layer controller,
       scene/alert web assets, node scene tests. Route: delegated writer.
+- [ ] T5b Review follow-ups (user request): fix the actionable review warnings listed under
+      Follow-ups, with tests. Route: delegated writer.
 - [ ] T6 Mini: controller, browser, placement with `Previous`, failure policy, tests.
       Route: delegated writer.
 - [ ] T7 Composition root, Alt+M / Alt+Shift+M hotkeys, tray, fullscreen pause, wiring tests.
@@ -99,6 +101,16 @@ Slice boundaries are recorded per task below once PRs exist.
   `VideoPlayerAlertTintSink`, `AlertMaskDecoder`, tint messages), the video-mode `Alerts/Web/alert-layer.*` page + its fonts + `alert-layer-layout`/web-page tests (scene pages embed
   `shared/js/alert-overlay.js`), `WebViewAlertLayerVisibility` (its only input was the html/video flag), composition-wiring tests (T7). Scene web assets copied wholesale (comments still
   mention `alert-layer.js` as the original contract). Mini files are T6.
+- T5 split for review (lens_context_budget_exceeded on the 20k-line commit, then on a 3.5k slice):
+  `25795b6` alerts+controller, `79e30c9` shared runtime, `5050641` processing, then explorer/idle/raphael
+  as 10 commits `9f1682d`..`c1ccbd2`. Each built in a clean worktree; final tree identical to the
+  original (backups `backup/t5-unsplit`, `backup/scenes-unsplit`).
+- Reviews: `770508d..25795b6` (4 lenses) approved+ack; `..79e30c9` approved+ack; `..5050641` (4 lenses)
+  approved+ack; `5050641..86320dd` approved+ack. `86320dd..4dc7414` (4 lenses): correction_required,
+  then terminal `corrupted_or_unverifiable_authority` (gentle-ai 3.7.0 defect, existing issue #4571;
+  occurrence comment posted with user consent). Candidate declined (declined_this_candidate); that
+  range stays unreviewed and the triggering findings are unknown. Pending: `4dc7414..12dc958`,
+  `12dc958..cee39af`, `cee39af..c1ccbd2`.
 
 ## Follow-ups (non-blocking review advice)
 - `AlertHttpTokenFile` abandoned-mutex path (`AlertHttpTokenFile.cs:137-144`) has no test.
@@ -112,6 +124,10 @@ Slice boundaries are recorded per task below once PRs exist.
   save (scene switch, Alt+M) would then overwrite the user's file. Fix in T7 (report + avoid save-over).
 - T4 R3-002 `SettingsFile.cs:98`: `File.WriteAllText` is not atomic; use temp file + replace. Fix in T7.
 - T4 R3-003 `SynchronizedSettingsStoreTests.cs:15-52`: test suggestion.
+- T5 `WebViewAlertLayerController.cs:374-375` (R3/R4): after a WebView2 process failure the layer is torn
+  down and nothing recreates it. `:307`: navigation has no timeout. Fix in T7 (recovery like the mini).
+- T5 `processing/js/main.js:71-108`: a throwing scene layer leaves canvas save/restore unbalanced.
+- T5 `explorer/js/animate.js:175-177` cache key committed before mask build; `earth.js:318-319` mini basis.
 
 ## Next step
 T6 Mini.

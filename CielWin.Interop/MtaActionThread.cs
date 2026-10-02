@@ -35,16 +35,20 @@ public sealed class MtaActionThread : IDisposable
     public void Post(Action work) => _ = TryPost(work);
 
     /// <summary>
-    /// Runs <paramref name="work"/> on the thread and waits (bounded to five seconds) for it. A
-    /// failure inside the work is rethrown wrapped; a timeout returns silently, leaving the work
-    /// queued.
+    /// Runs <paramref name="work"/> on the thread and waits (default five seconds) for it. A failure
+    /// inside the work is rethrown wrapped.
     /// </summary>
-    public void Invoke(Action work)
+    /// <returns>
+    /// <c>true</c> when the work ran to completion; <c>false</c> when it was never queued (disposed)
+    /// or the wait timed out, in which case it may still run later, so callers must not assume it
+    /// either did or did not happen.
+    /// </returns>
+    public bool Invoke(Action work, TimeSpan? timeout = null)
     {
         if (Thread.CurrentThread == _thread)
         {
             work();
-            return;
+            return true;
         }
 
         var completed = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -61,18 +65,20 @@ public sealed class MtaActionThread : IDisposable
             }
         }))
         {
-            return;
+            return false;
         }
 
-        if (!completed.Task.Wait(TimeSpan.FromSeconds(5)))
+        if (!completed.Task.Wait(timeout ?? TimeSpan.FromSeconds(5)))
         {
-            return;
+            return false;
         }
 
         if (completed.Task.Result is { } failure)
         {
             throw new InvalidOperationException("Scene wallpaper thread work failed.", failure);
         }
+
+        return true;
     }
 
     private bool TryPost(Action work)

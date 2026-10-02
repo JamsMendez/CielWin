@@ -71,6 +71,40 @@ public sealed class MtaActionThreadTests
     }
 
     [Fact]
+    public void Invoke_WhenTheWorkCompletes_ReturnsTrue()
+    {
+        using var thread = new MtaActionThread("MtaActionThreadTests.InvokeTrue");
+
+        Assert.True(thread.Invoke(() => { }));
+    }
+
+    /// <summary>
+    /// A wait timeout leaves the work queued, so the caller must be able to tell it did not finish
+    /// (a bare return looked exactly like success).
+    /// </summary>
+    [Fact]
+    public void Invoke_WhenTheThreadIsBusyPastTheTimeout_ReturnsFalse()
+    {
+        using var thread = new MtaActionThread("MtaActionThreadTests.InvokeTimeout");
+        var release = new ManualResetEventSlim(initialState: false);
+        thread.Post(() => release.Wait(TimeSpan.FromSeconds(10)));
+
+        var completed = thread.Invoke(() => { }, timeout: TimeSpan.FromMilliseconds(100));
+        release.Set();
+
+        Assert.False(completed);
+    }
+
+    [Fact]
+    public void Invoke_AfterDispose_ReturnsFalse()
+    {
+        var thread = new MtaActionThread("MtaActionThreadTests.InvokeAfterDispose");
+        thread.Dispose();
+
+        Assert.False(thread.Invoke(() => { }));
+    }
+
+    [Fact]
     public void Post_AfterDispose_IsIgnored()
     {
         var thread = new MtaActionThread("MtaActionThreadTests.PostAfterDispose");
