@@ -19,10 +19,24 @@ public sealed class SingleInstanceGuard : IDisposable
 
     private SingleInstanceGuard(Mutex mutex) => _mutex = mutex;
 
-    /// <summary>Returns the guard when this is the only holder of <paramref name="name"/>; otherwise null.</summary>
+    /// <summary>
+    /// Returns the guard when this is the only holder of <paramref name="name"/>; otherwise null.
+    /// A name this process cannot open (another copy with a stricter ACL, e.g. started elevated, or a
+    /// different kernel object type) also counts as taken: the start must exit, not crash.
+    /// </summary>
     public static SingleInstanceGuard? TryAcquire(string name)
     {
-        var mutex = new Mutex(initiallyOwned: true, name, out var createdNew);
+        Mutex mutex;
+        bool createdNew;
+        try
+        {
+            mutex = new Mutex(initiallyOwned: true, name, out createdNew);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or WaitHandleCannotBeOpenedException)
+        {
+            return null;
+        }
+
         if (createdNew) return new SingleInstanceGuard(mutex);
 
         mutex.Dispose();

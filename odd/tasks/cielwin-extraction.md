@@ -175,6 +175,10 @@ Slice boundaries are recorded per task below once PRs exist.
 - Single-instance guard (user request 2026-10-02, route: inline, 3 files): `SingleInstanceGuard` named mutex
   `Local\CielWin.SingleInstance` decided by creation (never waits); `App.OnStartup` exits before wiring when taken.
   RED = CS0246; GREEN = 6 guard tests; full suite App 478, Interop 182 + 16 skipped, build 0 warnings.
+- Review `1248a4a..7560839` (1 lens) approved+ack. R3-001 (guard crashed on a name it cannot open) FIXED test-first
+  (RED: `WaitHandleCannotBeOpenedException`; GREEN 7/7). Open: WARNING R3-002 `App.xaml.cs:27` a throwing
+  `ProductionComposition.Wire` crashes startup with no trace line; suggestions `FileTrace.cs:49`,
+  `StartupSettingsTests.cs:39-49`.
 - T7 reviews: `a728b2e..d9f2496` (hotkeys+tray, 1 lens) approved+ack; `d9f2496..1248a4a` (composition, 1 lens)
   approved+ack; `1248a4a..3f2850f` (production entry, 387 lines) assessed medium `under_budget`, pending in the
   next slice. Informational: WARNING `Win32HotkeyRegistrar.cs:113-119` swallows errors silently, WARNING

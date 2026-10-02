@@ -55,6 +55,18 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
+    public void Acquire_WhenTheNameBelongsToAnotherKernelObject_ReturnsNull()
+    {
+        // Same failure class as a copy holding the name with an ACL this process cannot open:
+        // the name is taken by something this start cannot own, so it must exit, not crash.
+        using var squatter = new EventWaitHandle(false, EventResetMode.ManualReset, _name);
+
+        using var guard = SingleInstanceGuard.TryAcquire(_name);
+
+        Assert.Null(guard);
+    }
+
+    [Fact]
     public void Dispose_IsIdempotent()
     {
         var guard = SingleInstanceGuard.TryAcquire(_name)!;
