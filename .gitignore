@@ -1,0 +1,15 @@
+# Local tooling state: machine-specific caches and indexes.
+/.atl/
+/.engram/
+/.codegraph/
+
+# .NET build output
+bin/
+obj/
+*.user
+
+# IDE
+.vs/
+
+# Unlocked copy the app is launched from, so the build tree stays writable.
+run/
