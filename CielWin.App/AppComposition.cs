@@ -1,3 +1,4 @@
+using CielWin.App.Alerts;
 using CielWin.App.Composition;
 using CielWin.App.Input;
 using CielWin.App.Tray;
@@ -16,7 +17,7 @@ namespace CielWin.App;
 /// thread and only post work to the UI thread (the scene route must not block).
 /// </para>
 /// <para>
-/// Persistence: every change (scene, mode, mini position) goes through one
+/// Persistence: every change (scene, mode, mini position, alert sounds, imported sounds) goes through one
 /// <see cref="SynchronizedSettingsStore"/>, which keeps the in-memory snapshot current. When the
 /// settings file exists but could not be read (<see cref="SettingsLoadResult.CanSave"/> false), the
 /// store's save is replaced by a trace for the whole session: saving would overwrite the user's real
@@ -53,7 +54,9 @@ public sealed class AppComposition : IDisposable
         _store = new SynchronizedSettingsStore(
             loaded.Settings,
             loaded.CanSave ? save : _ => _trace("settings-file save-skipped reason=unreadable"));
-        _alerts = new AlertDriver(host.Clock, host.ReadPrimaryDisplay, _trace);
+        _alerts = new AlertDriver(
+            host.Clock, host.ReadPrimaryDisplay, host.CreateAlertSoundPlayer(ResolveAlertSound),
+            () => _store.Current.AlertSoundsEnabled, _trace);
     }
 
     /// <summary>Builds and starts everything. Call on the UI thread.</summary>
@@ -88,6 +91,10 @@ public sealed class AppComposition : IDisposable
             _tray = _host.BuildTray(new TrayMenuController(
                 () => _mode, mode => _host.OnUiThread(() => SelectMode(mode)),
                 () => _store.Current.WallpaperScene, scene => _host.OnUiThread(() => SwitchScene(scene, "tray")),
+                () => _store.Current.AlertSoundsEnabled, () => _host.OnUiThread(ToggleAlertSounds),
+                kind => _store.Current.SoundFor(kind) is not null,
+                kind => _host.OnUiThread(() => ImportAlertSound(kind)),
+                kind => _host.OnUiThread(() => RemoveAlertSound(kind)),
                 _host.Shutdown));
         }
         catch (Exception error)
@@ -191,6 +198,98 @@ public sealed class AppComposition : IDisposable
         ActivateSurface();
         Persist(settings => settings with { WallpaperMode = mode });
         _trace($"mode switched mode={mode}");
+    }
+
+    /// <summary>Tray: flips whether new alerts play their sound, and persists it.</summary>
+    private void ToggleAlertSounds()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        Persist(settings => settings with { AlertSoundsEnabled = !settings.AlertSoundsEnabled });
+        _trace($"alert-sounds toggled enabled={_store.Current.AlertSoundsEnabled}");
+    }
+
+    /// <summary>The imported file <paramref name="kind"/> plays, or null when it has none.</summary>
+    private string? ResolveAlertSound(AlertKind kind) =>
+        _store.Current.SoundFor(kind) is { } name ? _host.AlertSoundLibrary.PathOf(name) : null;
+
+    /// <summary>
+    /// Tray: asks for a file, copies it into the sounds folder as <paramref name="kind"/>'s sound and
+    /// persists its name. A cancelled dialog changes nothing; every failure is traced (reason code or
+    /// exception TYPE, never a path) and leaves the previous sound in place.
+    /// </summary>
+    private void ImportAlertSound(AlertKind kind)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var name = AlertSoundLibrary.KindName(kind);
+        string? source;
+        try
+        {
+            source = _host.PickAlertSoundFile(kind);
+        }
+        catch (Exception error)
+        {
+            _trace($"alert-sound pick-failed kind={name} error={error.GetType().Name}");
+            return;
+        }
+
+        if (source is null)
+        {
+            return;
+        }
+
+        if (!AlertSoundLibrary.IsSupported(source))
+        {
+            _trace($"alert-sound import-rejected kind={name} reason=unsupported-format");
+            return;
+        }
+
+        string fileName;
+        try
+        {
+            fileName = _host.AlertSoundLibrary.Import(kind, source);
+        }
+        catch (Exception error)
+        {
+            _trace($"alert-sound import-failed kind={name} error={error.GetType().Name}");
+            return;
+        }
+
+        Persist(settings => settings.WithSound(kind, fileName));
+        _trace($"alert-sound imported kind={name}");
+    }
+
+    /// <summary>
+    /// Tray: deletes <paramref name="kind"/>'s imported sound and clears its setting. The setting is
+    /// cleared even when the delete fails (traced): the kind is silent either way, and the next
+    /// import replaces the stray file.
+    /// </summary>
+    private void RemoveAlertSound(AlertKind kind)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var name = AlertSoundLibrary.KindName(kind);
+        try
+        {
+            _host.AlertSoundLibrary.Remove(kind);
+        }
+        catch (Exception error)
+        {
+            _trace($"alert-sound remove-failed kind={name} error={error.GetType().Name}");
+        }
+
+        Persist(settings => settings.WithSound(kind, null));
+        _trace($"alert-sound removed kind={name}");
     }
 
     /// <summary>UI thread: switches the active surface's scene and persists it when it switched.</summary>

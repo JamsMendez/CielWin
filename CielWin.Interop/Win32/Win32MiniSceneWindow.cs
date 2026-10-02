@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Graphics.DirectComposition;
+using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CielWin.Interop.Win32;
@@ -36,6 +37,21 @@ internal static class MiniSceneWindowStyles
 
     /// <summary><c>HWND_TOPMOST</c> (-1): the insert-after handle that keeps the window in the topmost band.</summary>
     public static readonly nint InsertAfterTopmost = -1;
+
+    /// <summary>
+    /// Used when re-claiming the top of the topmost band: z-order only, so it neither moves, resizes,
+    /// shows nor activates the window.
+    /// </summary>
+    public const SET_WINDOW_POS_FLAGS ReassertFlags =
+        SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE;
+
+    /// <summary>
+    /// The topmost band is shared (taskbar, Start, notifications, other always-on-top apps): any of them
+    /// coming to the foreground lands above us. So whenever ANOTHER window takes the foreground, the
+    /// mini window re-claims the top.
+    /// </summary>
+    public static bool ShouldReassertTopmost(nint foreground, nint own) =>
+        foreground != 0 && own != 0 && foreground != own;
 }
 
 /// <summary>
@@ -55,6 +71,9 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
     private bool _classRegistered;
     private bool _disposed;
     private HWND _hwnd;
+    // Kept in a field so the GC never collects the delegate the foreground hook calls into.
+    private WINEVENTPROC? _foregroundProc;
+    private HWINEVENTHOOK _foregroundHook;
     private IDCompositionDevice? _device;
     private IDCompositionTarget? _target;
     private IDCompositionVisual? _root;
@@ -106,6 +125,7 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
         }
 
         PInvoke.SetLayeredWindowAttributes(_hwnd, default, 255, LAYERED_WINDOW_ATTRIBUTES_FLAGS.LWA_ALPHA);
+        InstallForegroundHook();
 
         try
         {
@@ -140,6 +160,33 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
         !_disposed && !_hwnd.IsNull && PInvoke.SetWindowPos(
             _hwnd, new HWND(MiniSceneWindowStyles.InsertAfterTopmost),
             bounds.Left, bounds.Top, bounds.Width, bounds.Height, MiniSceneWindowStyles.PlacementFlags);
+
+    public bool ReassertsTopmost => !_disposed && !_foregroundHook.IsNull;
+
+    /// <summary>
+    /// Out-of-context hook on foreground changes: its callback is delivered through this (UI) thread's
+    /// message loop, so it runs on the same thread as every other member. A failed hook only loses the
+    /// re-claiming (placement still works, the user can re-place with the hotkeys); it shows as
+    /// <see cref="ReassertsTopmost"/> false, which the owner traces.
+    /// </summary>
+    private void InstallForegroundHook()
+    {
+        _foregroundProc = (_, _, hwnd, _, _, _, _) => OnForegroundChanged((nint)hwnd.Value);
+        _foregroundHook = PInvoke.SetWinEventHook(
+            PInvoke.EVENT_SYSTEM_FOREGROUND, PInvoke.EVENT_SYSTEM_FOREGROUND, HMODULE.Null, _foregroundProc,
+            0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
+    }
+
+    /// <summary>The foreground hook's callback: re-claims the top when ANOTHER window took the foreground.</summary>
+    internal void OnForegroundChanged(nint foreground)
+    {
+        if (!_disposed && MiniSceneWindowStyles.ShouldReassertTopmost(foreground, (nint)_hwnd.Value))
+        {
+            PInvoke.SetWindowPos(
+                _hwnd, new HWND(MiniSceneWindowStyles.InsertAfterTopmost), 0, 0, 0, 0,
+                MiniSceneWindowStyles.ReassertFlags);
+        }
+    }
 
     public object? AddCompositionOverlayVisual()
     {
@@ -207,6 +254,13 @@ public sealed unsafe class Win32MiniSceneWindow : IMiniSceneSurface
         _root = null;
         _target = null;
         _device = null;
+        if (!_foregroundHook.IsNull)
+        {
+            PInvoke.UnhookWinEvent(_foregroundHook);
+            _foregroundHook = default;
+        }
+
+        _foregroundProc = null;
         if (!_hwnd.IsNull)
         {
             PInvoke.DestroyWindow(_hwnd);

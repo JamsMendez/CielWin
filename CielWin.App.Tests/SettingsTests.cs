@@ -1,3 +1,4 @@
+using CielWin.App.Alerts;
 using CielWin.Interop;
 
 namespace CielWin.App.Tests;
@@ -14,9 +15,128 @@ public sealed class SettingsTests
         Assert.Equal(WallpaperMode.Scene, settings.WallpaperMode);
         Assert.True(settings.HttpServerEnabled);
         Assert.Equal(AlertHttpProtocol.DefaultPort, settings.HttpServerPort);
-        Assert.Equal(47811, settings.HttpServerPort);
+        Assert.Equal(43811, settings.HttpServerPort);
         Assert.Equal(WallpaperScene.Processing, settings.WallpaperScene);
         Assert.Equal(MiniPosition.TopRight, settings.MiniPosition);
+        Assert.True(settings.AlertSoundsEnabled);
+    }
+
+    [Theory]
+    [InlineData("alert-sounds = off", false)]
+    [InlineData("alert-sounds = 0", false)]
+    [InlineData("ALERT-SOUNDS = On", true)]
+    [InlineData("alert-sounds = true", true)]
+    public void AlertSoundsIsRead_AsAFlag(string line, bool expected)
+    {
+        Assert.Equal(expected, Settings.Parse(line).AlertSoundsEnabled);
+    }
+
+    [Theory]
+    [InlineData("alert-sounds = muted")]
+    [InlineData("alert-sounds =")]
+    public void AnUnreadableAlertSoundsValue_KeepsSoundsOn(string line)
+    {
+        Assert.True(Settings.Parse(line).AlertSoundsEnabled);
+    }
+
+    [Fact]
+    public void AFileWrittenBeforeAlertSoundsExisted_LoadsWithSoundsOn()
+    {
+        var older = """
+            wallpaper-mode = scene-mini
+            http-server = on
+            http-server-port = 47811
+            scene = idle
+            mini-position = bottom-left
+            """;
+
+        var settings = Settings.Parse(older);
+
+        Assert.True(settings.AlertSoundsEnabled);
+        Assert.Equal(WallpaperScene.Idle, settings.WallpaperScene);
+    }
+
+    [Theory]
+    [InlineData(true, "alert-sounds = on")]
+    [InlineData(false, "alert-sounds = off")]
+    public void Serialize_WritesAlertSounds_AndRoundTrips(bool enabled, string expectedLine)
+    {
+        var original = Settings.Default with { AlertSoundsEnabled = enabled };
+        var text = original.Serialize();
+
+        Assert.Contains(expectedLine, text.Split('\n').Select(line => line.Trim()));
+        Assert.Equal(original, Settings.Parse(text));
+    }
+
+    [Fact]
+    public void AFileWrittenBeforeImportedSoundsExisted_LoadsWithNoSound()
+    {
+        var older = """
+            scene = idle
+            alert-sounds = on
+            """;
+
+        var settings = Settings.Parse(older);
+
+        Assert.Null(settings.FailedSound);
+        Assert.Null(settings.WarningSound);
+        Assert.Null(settings.SoundFor(AlertKind.Failed));
+        Assert.False(settings.HasAnySound);
+    }
+
+    [Theory]
+    [InlineData("failed-sound = failed.m4a", "failed.m4a", null)]
+    [InlineData("WARNING-SOUND = Warning.WAV", null, "Warning.WAV")]
+    [InlineData("failed-sound = failed.mp3\nwarning-sound = warning.wav", "failed.mp3", "warning.wav")]
+    public void ImportedSoundsAreRead_PerKind(string content, string? failed, string? warning)
+    {
+        var settings = Settings.Parse(content);
+
+        Assert.Equal(failed, settings.SoundFor(AlertKind.Failed));
+        Assert.Equal(warning, settings.SoundFor(AlertKind.Warning));
+    }
+
+    [Theory]
+    [InlineData(@"failed-sound = ..\..\secret.wav")]
+    [InlineData(@"failed-sound = C:\Windows\Media\chord.wav")]
+    [InlineData("failed-sound = failed.ogg")]
+    [InlineData("failed-sound =")]
+    public void AnUnusableOrEmptySoundValue_MeansNoSound(string line)
+    {
+        Assert.Null(Settings.Parse(line).FailedSound);
+    }
+
+    [Fact]
+    public void AnEmptySoundLine_ClearsAnEarlierOne_TheLastAssignmentWins()
+    {
+        Assert.Null(Settings.Parse("warning-sound = warning.wav\nwarning-sound =").WarningSound);
+    }
+
+    [Theory]
+    [InlineData("failed.m4a", null)]
+    [InlineData(null, "warning.mp3")]
+    [InlineData("failed.wav", "warning.wav")]
+    [InlineData(null, null)]
+    public void Serialize_WritesTheImportedSounds_AndRoundTrips(string? failed, string? warning)
+    {
+        var original = Settings.Default with { FailedSound = failed, WarningSound = warning };
+        var lines = original.Serialize().Split('\n').Select(line => line.Trim()).ToArray();
+
+        Assert.Contains(failed is null ? "failed-sound =" : $"failed-sound = {failed}", lines);
+        Assert.Contains(warning is null ? "warning-sound =" : $"warning-sound = {warning}", lines);
+        Assert.Equal(original, Settings.Parse(original.Serialize()));
+    }
+
+    [Fact]
+    public void WithSound_SetsAndClearsOneKind_AndHasAnySoundFollows()
+    {
+        var failedOnly = Settings.Default.WithSound(AlertKind.Failed, "failed.wav");
+
+        Assert.Equal("failed.wav", failedOnly.FailedSound);
+        Assert.Null(failedOnly.WarningSound);
+        Assert.True(failedOnly.HasAnySound);
+        Assert.False(failedOnly.WithSound(AlertKind.Failed, null).HasAnySound);
+        Assert.Equal("warning.mp3", failedOnly.WithSound(AlertKind.Warning, "warning.mp3").SoundFor(AlertKind.Warning));
     }
 
     [Theory]
@@ -267,7 +387,8 @@ public sealed class SettingsTests
             HttpServerPort: 12345,
             WallpaperMode: WallpaperMode.SceneMini,
             WallpaperScene: WallpaperScene.Raphael,
-            MiniPosition: MiniPosition.LeftCenter);
+            MiniPosition: MiniPosition.LeftCenter,
+            AlertSoundsEnabled: false);
 
         Assert.Equal(original, Settings.Parse(original.Serialize()));
     }
@@ -306,7 +427,7 @@ public sealed class SettingsTests
             .Select(line => line[..line.IndexOf('=')].Trim())
             .ToArray();
 
-        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position"], keys);
+        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position", "alert-sounds", "failed-sound", "warning-sound"], keys);
         Assert.StartsWith("# CielWin settings", text, StringComparison.Ordinal);
         Assert.DoesNotContain("CosmicWin", text, StringComparison.Ordinal);
         Assert.DoesNotContain("wallpaper-scene", text, StringComparison.Ordinal);

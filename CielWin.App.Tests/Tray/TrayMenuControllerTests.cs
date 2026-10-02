@@ -1,3 +1,4 @@
+using CielWin.App.Alerts;
 using CielWin.App.Tray;
 
 namespace CielWin.App.Tests.Tray;
@@ -12,11 +13,18 @@ public sealed class TrayMenuControllerTests
     private WallpaperScene _scene = WallpaperScene.Processing;
     private readonly List<WallpaperMode> _modeSelections = [];
     private readonly List<WallpaperScene> _sceneSelections = [];
+    private bool _alertSounds = true;
+    private int _alertSoundToggles;
+    private readonly HashSet<AlertKind> _imported = [];
+    private readonly List<AlertKind> _imports = [];
+    private readonly List<AlertKind> _removals = [];
     private int _exits;
 
     private TrayMenuController Create() => new(
         () => _mode, _modeSelections.Add,
         () => _scene, _sceneSelections.Add,
+        () => _alertSounds, () => _alertSoundToggles++,
+        _imported.Contains, _imports.Add, _removals.Add,
         () => _exits++);
 
     [Fact]
@@ -51,6 +59,83 @@ public sealed class TrayMenuControllerTests
         controller.SelectScene(WallpaperScene.Explorer);
 
         Assert.Equal([WallpaperScene.Explorer], _sceneSelections);
+    }
+
+    [Fact]
+    public void AlertSoundsEnabled_ReflectsTheInjectedGetter()
+    {
+        var controller = Create();
+        Assert.True(controller.AlertSoundsEnabled);
+
+        _alertSounds = false;
+
+        Assert.False(controller.AlertSoundsEnabled);
+    }
+
+    [Fact]
+    public void ToggleAlertSounds_ForwardsTheClick()
+    {
+        var controller = Create();
+
+        controller.ToggleAlertSounds();
+
+        Assert.Equal(1, _alertSoundToggles);
+    }
+
+    [Fact]
+    public void ImportAndRemove_ForwardTheKind()
+    {
+        var controller = Create();
+
+        controller.ImportAlertSound(AlertKind.Warning);
+        controller.RemoveAlertSound(AlertKind.Failed);
+
+        Assert.Equal([AlertKind.Warning], _imports);
+        Assert.Equal([AlertKind.Failed], _removals);
+    }
+
+    [Fact]
+    public void WithNoSoundImported_OnlyTheImportEntriesOfTheSoundGroupShow()
+    {
+        var controller = Create();
+
+        Assert.True(controller.IsVisible(TrayMenuEntry.ImportFailedSound));
+        Assert.True(controller.IsVisible(TrayMenuEntry.ImportWarningSound));
+        Assert.False(controller.IsVisible(TrayMenuEntry.RemoveFailedSound));
+        Assert.False(controller.IsVisible(TrayMenuEntry.RemoveWarningSound));
+        Assert.False(controller.IsVisible(TrayMenuEntry.AlertSounds));
+    }
+
+    [Fact]
+    public void WithOnlyTheFailedSound_RemoveFailedAndTheToggleShow()
+    {
+        var controller = Create();
+        _imported.Add(AlertKind.Failed);
+
+        Assert.True(controller.IsVisible(TrayMenuEntry.RemoveFailedSound));
+        Assert.False(controller.IsVisible(TrayMenuEntry.RemoveWarningSound));
+        Assert.True(controller.IsVisible(TrayMenuEntry.AlertSounds));
+    }
+
+    [Fact]
+    public void WithOnlyTheWarningSound_RemoveWarningAndTheToggleShow()
+    {
+        var controller = Create();
+        _imported.Add(AlertKind.Warning);
+
+        Assert.False(controller.IsVisible(TrayMenuEntry.RemoveFailedSound));
+        Assert.True(controller.IsVisible(TrayMenuEntry.RemoveWarningSound));
+        Assert.True(controller.IsVisible(TrayMenuEntry.AlertSounds));
+    }
+
+    [Fact]
+    public void TheOtherEntries_AlwaysShow()
+    {
+        var controller = Create();
+
+        Assert.True(controller.IsVisible(TrayMenuEntry.Mode));
+        Assert.True(controller.IsVisible(TrayMenuEntry.Scene));
+        Assert.True(controller.IsVisible(TrayMenuEntry.Exit));
     }
 
     [Fact]

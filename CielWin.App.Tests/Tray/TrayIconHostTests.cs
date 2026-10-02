@@ -13,9 +13,32 @@ public sealed class TrayIconHostTests
     /// different order cannot pass.
     /// </summary>
     [Fact]
-    public void TheMenuIsOrdered_ModeThenSceneThenExit()
+    public void TheMenuIsOrdered_ModeThenSceneThenTheSoundGroupThenExit()
     {
-        Assert.Equal([TrayMenuEntry.Mode, TrayMenuEntry.Scene, TrayMenuEntry.Exit], TrayIconHost.MenuOrder);
+        Assert.Equal(
+            [
+                TrayMenuEntry.Mode, TrayMenuEntry.Scene,
+                TrayMenuEntry.ImportFailedSound, TrayMenuEntry.ImportWarningSound,
+                TrayMenuEntry.RemoveFailedSound, TrayMenuEntry.RemoveWarningSound,
+                TrayMenuEntry.AlertSounds, TrayMenuEntry.Exit,
+            ],
+            TrayIconHost.MenuOrder);
+    }
+
+    [Theory]
+    [InlineData(TrayMenuEntry.ImportFailedSound, "Import failed sound…")]
+    [InlineData(TrayMenuEntry.ImportWarningSound, "Import warning sound…")]
+    [InlineData(TrayMenuEntry.RemoveFailedSound, "Remove failed sound")]
+    [InlineData(TrayMenuEntry.RemoveWarningSound, "Remove warning sound")]
+    public void TheSoundEntries_AreLabelledInEnglish(TrayMenuEntry entry, string expected)
+    {
+        Assert.Equal(expected, TrayIconHost.SoundEntryLabel(entry));
+    }
+
+    [Fact]
+    public void TheAlertSoundsToggle_IsLabelledInEnglish()
+    {
+        Assert.Equal("Alert sounds", TrayIconHost.AlertSoundsLabel);
     }
 
     [Fact]

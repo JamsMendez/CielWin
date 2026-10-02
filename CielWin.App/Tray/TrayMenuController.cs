@@ -1,3 +1,5 @@
+using CielWin.App.Alerts;
+
 namespace CielWin.App.Tray;
 
 /// <summary>
@@ -8,6 +10,8 @@ namespace CielWin.App.Tray;
 public sealed class TrayMenuController(
     Func<WallpaperMode> getMode, Action<WallpaperMode> selectMode,
     Func<WallpaperScene> getScene, Action<WallpaperScene> selectScene,
+    Func<bool> getAlertSounds, Action toggleAlertSounds,
+    Func<AlertKind, bool> hasAlertSound, Action<AlertKind> importAlertSound, Action<AlertKind> removeAlertSound,
     Action exit)
 {
     /// <summary>Every mode, in declaration order: the mode submenu's items.</summary>
@@ -20,9 +24,29 @@ public sealed class TrayMenuController(
 
     public WallpaperScene Scene => getScene();
 
+    public bool AlertSoundsEnabled => getAlertSounds();
+
     public void SelectMode(WallpaperMode mode) => selectMode(mode);
 
     public void SelectScene(WallpaperScene scene) => selectScene(scene);
+
+    public void ToggleAlertSounds() => toggleAlertSounds();
+
+    public void ImportAlertSound(AlertKind kind) => importAlertSound(kind);
+
+    public void RemoveAlertSound(AlertKind kind) => removeAlertSound(kind);
+
+    /// <summary>
+    /// Whether <paramref name="entry"/> shows right now: a remove entry only while its kind has an
+    /// imported sound, the mute toggle only while either kind has one; everything else always.
+    /// </summary>
+    public bool IsVisible(TrayMenuEntry entry) => entry switch
+    {
+        TrayMenuEntry.RemoveFailedSound => hasAlertSound(AlertKind.Failed),
+        TrayMenuEntry.RemoveWarningSound => hasAlertSound(AlertKind.Warning),
+        TrayMenuEntry.AlertSounds => hasAlertSound(AlertKind.Failed) || hasAlertSound(AlertKind.Warning),
+        _ => true,
+    };
 
     public void Exit() => exit();
 }

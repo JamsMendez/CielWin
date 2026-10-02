@@ -20,6 +20,7 @@ public sealed class MiniSceneWindowControllerTests
         public nint Hwnd => 42;
         public bool IsCompositionReady => true;
         public int CompositionGeneration => 1;
+        public bool ReassertsTopmost { get; set; } = true;
 
         public bool TryCreate(InteropRectangle bounds)
         {
@@ -305,6 +306,28 @@ public sealed class MiniSceneWindowControllerTests
         Assert.Equal(1, surface.DisposeCount);
         Assert.False(controller.IsReady);
         Assert.Contains(_trace, line => line.Contains("place failed"));
+    }
+
+    [Fact]
+    public void ShowTracesOnceWhenTheSurfaceCannotReclaimTheTopOfTheTopmostBand()
+    {
+        var (controller, surface, _) = Create();
+        surface.ReassertsTopmost = false;
+
+        Assert.True(controller.Show(WallpaperScene.Idle, Corner));
+        controller.Show(WallpaperScene.Idle, Corner);
+
+        Assert.Single(_trace, line => line == "mini-window: foreground hook unavailable");
+    }
+
+    [Fact]
+    public void ShowDoesNotTraceTheForegroundHookWhenTheSurfaceHasIt()
+    {
+        var (controller, _, _) = Create();
+
+        controller.Show(WallpaperScene.Idle, Corner);
+
+        Assert.DoesNotContain(_trace, line => line.Contains("foreground hook"));
     }
 
     [Fact]

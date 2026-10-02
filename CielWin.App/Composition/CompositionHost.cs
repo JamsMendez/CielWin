@@ -53,6 +53,21 @@ public sealed class CompositionHost
     /// <summary>Ends the process (the WPF application's shutdown).</summary>
     public required Action Shutdown { get; init; }
 
+    /// <summary>The folder imported alert sounds are copied into.</summary>
+    public required AlertSoundLibrary AlertSoundLibrary { get; init; }
+
+    /// <summary>
+    /// Asks the user for a sound file to import for a kind (a modal dialog on the UI thread); null
+    /// when cancelled.
+    /// </summary>
+    public required Func<AlertKind, string?> PickAlertSoundFile { get; init; }
+
+    /// <summary>
+    /// Builds the alert sound player over a lookup that returns a kind's imported file, or null when
+    /// it has none. The lookup reads the current settings, so an import applies to the next alert.
+    /// </summary>
+    public required Func<Func<AlertKind, string?>, IAlertSoundPlayer> CreateAlertSoundPlayer { get; init; }
+
     /// <summary>Where the alert queue reads time from.</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
 }

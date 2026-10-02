@@ -1,3 +1,4 @@
+using System.IO;
 using CielWin.App.Alerts;
 using CielWin.App.Composition;
 using CielWin.App.Tray;
@@ -25,6 +26,15 @@ internal sealed class CompositionHarness
     public List<HttpServerOptions> ServerRequests { get; } = [];
     public FakeHotkeys Hotkeys { get; } = new();
     public FakeTray? Tray { get; private set; }
+    public FakeAlertSoundPlayer Sounds { get; } = new();
+
+    /// <summary>A per-harness temporary folder, created only when a test imports; tests that import delete it.</summary>
+    public string SoundsDirectory { get; } = Path.Combine(Path.GetTempPath(), $"cielwin-harness-sounds-{Guid.NewGuid():N}");
+
+    /// <summary>What the next "Import ... sound" dialog returns; null is a cancelled dialog.</summary>
+    public string? PickedSoundFile { get; set; }
+    public List<AlertKind> SoundPicks { get; } = [];
+    public bool SoundPickThrows { get; set; }
     public ManualClock Clock { get; } = new();
     public List<Action> UiQueue { get; } = [];
 
@@ -126,6 +136,18 @@ internal sealed class CompositionHarness
         CreateHotkeys = () => Hotkeys,
         BuildTray = controller => Tray = new FakeTray(controller),
         Shutdown = () => ShutdownCalls++,
+        AlertSoundLibrary = new AlertSoundLibrary(SoundsDirectory),
+        PickAlertSoundFile = kind =>
+        {
+            SoundPicks.Add(kind);
+            if (SoundPickThrows) throw new InvalidOperationException("no desktop");
+            return PickedSoundFile;
+        },
+        CreateAlertSoundPlayer = resolve =>
+        {
+            Sounds.Resolve = resolve;
+            return Sounds;
+        },
         Clock = Clock,
     };
 
@@ -307,6 +329,23 @@ internal sealed class FakeTray(TrayMenuController controller) : IDisposable
     public TrayMenuController Controller { get; } = controller;
     public int DisposeCalls { get; private set; }
     public void Dispose() => DisposeCalls++;
+}
+
+internal sealed class FakeAlertSoundPlayer : IAlertSoundPlayer
+{
+    public List<AlertKind> Played { get; } = [];
+
+    /// <summary>The file each play resolved to through the composition's lookup (null: that kind has no sound).</summary>
+    public List<string?> PlayedFiles { get; } = [];
+    public bool Throws { get; set; }
+    public Func<AlertKind, string?>? Resolve { get; set; }
+
+    public void Play(AlertKind kind)
+    {
+        if (Throws) throw new InvalidOperationException("no audio device");
+        Played.Add(kind);
+        PlayedFiles.Add(Resolve?.Invoke(kind));
+    }
 }
 
 internal sealed class ManualClock : TimeProvider
