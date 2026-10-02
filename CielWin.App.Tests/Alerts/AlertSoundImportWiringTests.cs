@@ -139,13 +139,26 @@ public sealed class AlertSoundImportWiringTests : IDisposable
     public void AFailedCopy_IsTracedByTypeName_AndKeepsTheSetting()
     {
         using var composition = _harness.Wire(new Settings());
-        _harness.PickedSoundFile = Path.Combine(_sourceDirectory, "gone.wav");
+        _harness.PickedSoundFile = Source("previous.wav");
+        Tray.ImportAlertSound(AlertKind.Failed);
+        var previous = Path.Combine(_harness.SoundsDirectory, "failed.wav");
+        var savesBefore = _harness.Saves.Count;
+        // Another extension, so a copy that wrongly went ahead would also delete the previous file as stale.
+        _harness.PickedSoundFile = Path.Combine(_sourceDirectory, "gone.mp3");
 
         Tray.ImportAlertSound(AlertKind.Failed);
 
-        Assert.Empty(_harness.Saves);
+        Assert.Equal(savesBefore, _harness.Saves.Count);
+        Assert.Equal("failed.wav", _harness.Saves[^1].FailedSound);
+        Assert.Equal("sound bytes", File.ReadAllText(previous));
+        Assert.False(File.Exists(Path.Combine(_harness.SoundsDirectory, "failed.mp3")));
+        Assert.True(Tray.IsVisible(TrayMenuEntry.RemoveFailedSound));
         Assert.Contains(_harness.Trace, line => line.StartsWith("alert-sound import-failed kind=failed error=", StringComparison.Ordinal));
-        Assert.DoesNotContain(_harness.Trace, line => line.Contains("gone.wav", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(_harness.Trace, line => line.Contains("gone.mp3", StringComparison.OrdinalIgnoreCase));
+
+        _harness.Server.Options.HandleAlert("failed:1");
+
+        Assert.Equal([previous], _harness.Sounds.PlayedFiles);
     }
 
     [Fact]
