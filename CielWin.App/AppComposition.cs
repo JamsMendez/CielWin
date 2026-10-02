@@ -1,0 +1,401 @@
+using CielWin.App.Composition;
+using CielWin.App.Input;
+using CielWin.App.Tray;
+using CielWin.Interop;
+
+namespace CielWin.App;
+
+/// <summary>
+/// The composition root: one scene surface (wallpaper or mini window), one local HTTP server, the
+/// Alt+M / Alt+Shift+M hotkeys, the tray icon and the watch tick, wired over the seams in
+/// <see cref="CompositionHost"/>. <see cref="ProductionComposition"/> supplies the real ones.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Threading: everything runs on the UI thread except the two HTTP handlers, which run on the server
+/// thread and only post work to the UI thread (the scene route must not block).
+/// </para>
+/// <para>
+/// Persistence: every change (scene, mode, mini position) goes through one
+/// <see cref="SynchronizedSettingsStore"/>, which keeps the in-memory snapshot current. When the
+/// settings file exists but could not be read (<see cref="SettingsLoadResult.CanSave"/> false), the
+/// store's save is replaced by a trace for the whole session: saving would overwrite the user's real
+/// file with defaults.
+/// </para>
+/// <para>
+/// Hotkeys are registered in both modes, since the mode can be switched live from the tray; outside
+/// <see cref="WallpaperMode.SceneMini"/> a press is traced and ignored.
+/// </para>
+/// </remarks>
+public sealed class AppComposition : IDisposable
+{
+    /// <summary>The watch tick: wallpaper keep-alive, fullscreen pause, mini re-placement, alert timing.</summary>
+    public static readonly TimeSpan WatchInterval = TimeSpan.FromMilliseconds(400);
+
+    private readonly CompositionHost _host;
+    private readonly SynchronizedSettingsStore _store;
+    private readonly AlertDriver _alerts;
+    private readonly Action<string> _trace;
+    private WallpaperMode _mode;
+    private ISceneSurface? _surface;
+    private IDisposable? _tick;
+    private IHttpCommandServer? _server;
+    private IHotkeyRegistrar? _hotkeys;
+    private IDisposable? _tray;
+    private volatile bool _disposed;
+    private bool _coverCheckFailing;
+
+    private AppComposition(SettingsLoadResult loaded, Action<Settings> save, CompositionHost host)
+    {
+        _host = host;
+        _trace = host.Trace;
+        _mode = loaded.Settings.WallpaperMode;
+        _store = new SynchronizedSettingsStore(
+            loaded.Settings,
+            loaded.CanSave ? save : _ => _trace("settings-file save-skipped reason=unreadable"));
+        _alerts = new AlertDriver(host.Clock, host.ReadPrimaryDisplay, _trace);
+    }
+
+    /// <summary>Builds and starts everything. Call on the UI thread.</summary>
+    public static AppComposition Wire(SettingsLoadResult loaded, Action<Settings> save, CompositionHost host)
+    {
+        var composition = new AppComposition(loaded, save, host);
+        composition.Start(loaded);
+        return composition;
+    }
+
+    private void Start(SettingsLoadResult loaded)
+    {
+        if (!loaded.CanSave)
+        {
+            _trace("settings-file unreadable, changes this session will not be saved");
+        }
+
+        StartTray();
+        StartHotkeys();
+        // Posted, not run inline: WebView2 and the mini window need the dispatcher pumping.
+        _host.OnUiThread(ActivateSurface);
+        StartHttpServer(loaded.Settings);
+        _tick = _host.Schedule(WatchInterval, OnTick);
+    }
+
+    private void StartTray()
+    {
+        try
+        {
+            // Clicks arrive as raw window messages; the work is posted so WebView2 always runs inside
+            // a dispatcher operation (with its synchronization context), never inside the menu's own.
+            _tray = _host.BuildTray(new TrayMenuController(
+                () => _mode, mode => _host.OnUiThread(() => SelectMode(mode)),
+                () => _store.Current.WallpaperScene, scene => _host.OnUiThread(() => SwitchScene(scene, "tray")),
+                _host.Shutdown));
+        }
+        catch (Exception error)
+        {
+            _trace($"tray create-failed error={error.GetType().Name}");
+        }
+    }
+
+    private void StartHotkeys()
+    {
+        try
+        {
+            _hotkeys = _host.CreateHotkeys();
+            // WM_HOTKEY arrives as a raw window message: posted for the same reason as tray clicks.
+            _hotkeys.Pressed += id => _host.OnUiThread(() => OnHotkey(id));
+            Register(MiniPositionHotkeys.ClockwiseId, MiniPositionHotkeys.ClockwiseModifiers, "alt+m");
+            Register(MiniPositionHotkeys.CounterClockwiseId, MiniPositionHotkeys.CounterClockwiseModifiers, "alt+shift+m");
+        }
+        catch (Exception error)
+        {
+            _trace($"hotkey create-failed error={error.GetType().Name}");
+        }
+
+        void Register(int id, HotkeyModifiers modifiers, string chord)
+        {
+            if (!_hotkeys!.Register(id, modifiers, MiniPositionHotkeys.VirtualKeyM))
+            {
+                _trace($"hotkey register-failed chord={chord} (owned by another app)");
+            }
+        }
+    }
+
+    private void StartHttpServer(Settings settings)
+    {
+        if (!settings.HttpServerEnabled)
+        {
+            _trace("http-server disabled (http-server = off): alerts and scene switching are off");
+            return;
+        }
+
+        try
+        {
+            var token = _host.LoadHttpToken();
+            if (token is null)
+            {
+                _trace("http-server token unavailable, server not started");
+                return;
+            }
+
+            _server = _host.CreateHttpServer(new HttpServerOptions(
+                settings.HttpServerPort, token, HandleAlert, HandleSceneSwitch, _trace));
+            _server.Start();
+            // Start never throws: a port in use is reported by the server through the same trace.
+            _trace($"http-server start requested port={settings.HttpServerPort}");
+        }
+        catch (Exception error)
+        {
+            _trace($"http-server start-failed error={error.GetType().Name}");
+        }
+    }
+
+    private void ActivateSurface()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var settings = _store.Current;
+        try
+        {
+            ISceneSurface surface = _mode == WallpaperMode.SceneMini
+                ? new MiniSceneSurface(
+                    _host.CreateMiniWindow(), _host.ReadPrimaryDisplay, settings.WallpaperScene,
+                    settings.MiniPosition, _trace)
+                : new WallpaperSceneSurface(
+                    _host.CreateWallpaperHost(), _host.CreateWallpaperThread(), _host.CreateSceneLayer,
+                    settings.WallpaperScene, _trace);
+            _surface = surface;
+            surface.Start();
+        }
+        catch (Exception error)
+        {
+            _trace($"surface create-failed mode={_mode} error={error.GetType().Name}");
+        }
+    }
+
+    /// <summary>Tray: tears the current surface down and brings up the other one, live.</summary>
+    private void SelectMode(WallpaperMode mode)
+    {
+        if (_disposed || mode == _mode)
+        {
+            return;
+        }
+
+        _mode = mode;
+        var previous = _surface;
+        _surface = null;
+        SafeDispose("surface", previous);
+        _alerts.SurfaceReplaced();
+        ActivateSurface();
+        Persist(settings => settings with { WallpaperMode = mode });
+        _trace($"mode switched mode={mode}");
+    }
+
+    /// <summary>UI thread: switches the active surface's scene and persists it when it switched.</summary>
+    private void SwitchScene(WallpaperScene scene, string source)
+    {
+        if (_disposed || scene == _store.Current.WallpaperScene)
+        {
+            return;
+        }
+
+        if (_surface is not { } surface)
+        {
+            _trace($"scene-switch refused source={source} reason=no-surface");
+            return;
+        }
+
+        bool switched;
+        try
+        {
+            switched = surface.SwitchScene(scene);
+        }
+        catch (Exception error)
+        {
+            _trace($"scene-switch switch-failed source={source} error={error.GetType().Name}");
+            return;
+        }
+
+        if (!switched)
+        {
+            _trace($"scene-switch refused source={source} reason=surface-unavailable");
+            return;
+        }
+
+        Persist(settings => settings with { WallpaperScene = scene });
+    }
+
+    /// <summary>HTTP server thread. Accepts a valid scene at once; the switch runs on the UI thread.</summary>
+    private bool HandleSceneSwitch(string name)
+    {
+        if (_disposed || !TryParseScene(name, out var scene))
+        {
+            return false;
+        }
+
+        _host.OnUiThread(() => SwitchScene(scene, "http"));
+        return true;
+    }
+
+    /// <summary>HTTP server thread. Queues the alert, then shows it from the UI thread without waiting for the tick.</summary>
+    private string HandleAlert(string text)
+    {
+        var reply = _alerts.Accept(text);
+        if (reply == AlertReplyProtocol.OkReply && !_disposed)
+        {
+            _host.OnUiThread(() => UpdateAlerts(IsCovered()));
+        }
+
+        return reply;
+    }
+
+    private void OnHotkey(int id)
+    {
+        if (_disposed || !MiniPositionHotkeys.TryStep(id, _store.Current.MiniPosition, out var next))
+        {
+            return;
+        }
+
+        if (_surface is not MiniSceneSurface mini)
+        {
+            _trace("mini-position ignored reason=not-mini-mode");
+            return;
+        }
+
+        if (mini.TryMoveTo(next))
+        {
+            Persist(settings => settings with { MiniPosition = next });
+        }
+    }
+
+    private void OnTick()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var covered = IsCovered();
+        try
+        {
+            _surface?.Tick(covered);
+        }
+        catch (Exception error)
+        {
+            _trace($"surface tick-failed error={error.GetType().Name}");
+        }
+
+        UpdateAlerts(covered);
+    }
+
+    private void UpdateAlerts(bool covered)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _alerts.Update(_surface, covered);
+        }
+        catch (Exception error)
+        {
+            _trace($"alert update-failed error={error.GetType().Name}");
+        }
+    }
+
+    /// <summary>A failed check reads as "not covered"; only the first failure of a streak is traced.</summary>
+    private bool IsCovered()
+    {
+        try
+        {
+            var covered = _host.IsPrimaryMonitorCovered();
+            _coverCheckFailing = false;
+            return covered;
+        }
+        catch (Exception error)
+        {
+            if (!_coverCheckFailing)
+            {
+                _trace($"cover-check-failed error={error.GetType().Name}");
+            }
+
+            _coverCheckFailing = true;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The change has already taken effect on screen; a failing save is traced, never thrown back
+    /// into a tray click or a hotkey.
+    /// </summary>
+    private void Persist(Func<Settings, Settings> change)
+    {
+        try
+        {
+            _store.Update(change);
+        }
+        catch (Exception error)
+        {
+            _trace($"settings-file persist-failed error={error.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// The one place a validated lowercase scene name becomes a <see cref="WallpaperScene"/>. A closed
+    /// switch, not <see cref="Enum.TryParse{TEnum}(string, bool, out TEnum)"/>, which would accept
+    /// numbers.
+    /// </summary>
+    private static bool TryParseScene(string name, out WallpaperScene scene)
+    {
+        switch (name)
+        {
+            case "processing":
+                scene = WallpaperScene.Processing;
+                return true;
+            case "explorer":
+                scene = WallpaperScene.Explorer;
+                return true;
+            case "idle":
+                scene = WallpaperScene.Idle;
+                return true;
+            case "raphael":
+                scene = WallpaperScene.Raphael;
+                return true;
+            default:
+                scene = default;
+                return false;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        SafeDispose("tick", _tick);
+        SafeDispose("http-server", _server);
+        SafeDispose("hotkeys", _hotkeys);
+        SafeDispose("tray", _tray);
+        SafeDispose("surface", _surface);
+        _surface = null;
+    }
+
+    private void SafeDispose(string part, IDisposable? disposable)
+    {
+        try
+        {
+            disposable?.Dispose();
+        }
+        catch (Exception error)
+        {
+            _trace($"dispose-failed part={part} error={error.GetType().Name}");
+        }
+    }
+}
