@@ -248,3 +248,7 @@ Optional environment variables: `EDGE=<path to msedge.exe>`, `ICON_FRAME_MS=<sce
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+<p align="right">
+  <a href="https://github.com/Gentleman-Programming/gentle-ai"><img src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle-AI" width="180"></a>
+</p>
