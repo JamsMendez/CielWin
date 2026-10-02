@@ -187,7 +187,7 @@ Slice boundaries are recorded per task below once PRs exist.
 - Manual smoke test 2026-10-02 (user's desktop, CosmicWin stopped): startup attaches the wallpaper, HTTP scene switch
   202 + persisted, no token 401, alert 2 warning + 1 failed drawn (user confirmed), raphael visible, tray icon and
   menu OK, live mode switch scene -> scene-mini -> scene OK (alert layer recreated), tray scene switch OK, mini
-  position persisted after Alt+M (top-right -> right-center). Native virtual-desktop switch triggers a ~1.6 s
+  position persisted after Alt+M (top-right -> right-center); Alt+Shift+M confirmed by the user. Native virtual-desktop switch triggers a ~1.6 s
   `paused reason=fullscreen` (transition window counted as fullscreen), resumes by itself; left as is.
 - T7 reviews: `a728b2e..d9f2496` (hotkeys+tray, 1 lens) approved+ack; `d9f2496..1248a4a` (composition, 1 lens)
   approved+ack; `1248a4a..3f2850f` (production entry, 387 lines) assessed medium `under_budget`, pending in the
