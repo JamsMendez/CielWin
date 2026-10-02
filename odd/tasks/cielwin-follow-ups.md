@@ -36,6 +36,13 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   - [x] F3c Delete unused `CielWin.App/cielwin.ico`.
         Decision (user, 2026-10-02): delete. Verified unreferenced by any `.csproj` or source. Route: inline.
 
+- [ ] F4 Mini window partial move (review R3-mini-move-partial-state, `MiniSceneSurface.cs:98-108`): when `MoveTo`
+      throws after the native window moved, the surface must not keep or persist a stale `Position`.
+      Branch `fix/cielwin-review-suggestions`. Route: delegated writer.
+- [ ] F5 Icon contrast test (review R3-ico-unverified): a deterministic test over `CielWin.App/Assets/raphael-mini.ico`
+      that would fail if the 16/20/24 px frames lost their contrast (e.g. went pale or fully opaque).
+      Route: same delegated writer.
+
 ## Acceptance criteria
 
 - F1/F2: new tests RED before, GREEN after; full suites green; build 0 warnings.
@@ -82,4 +89,4 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
 
 ## Next step
 
-None. Optional: the two review suggestions above.
+F4 and F5 (user request 2026-10-02, before push).
