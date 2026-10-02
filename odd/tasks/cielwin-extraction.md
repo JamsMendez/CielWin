@@ -49,7 +49,7 @@ Slice boundaries are recorded per task below once PRs exist.
       test projects, empty build green. Route: inline (mechanical).
 - [x] T2 Interop HTTP: server with alert + scene routes only, protocols, token file, tests.
       Route: delegated writer.
-- [ ] T3 Interop Win32: attach-only wallpaper host, composition overlay surface, mini window,
+- [x] T3 Interop Win32: attach-only wallpaper host, composition overlay surface, mini window,
       fullscreen detector, tests. Route: delegated writer.
 - [ ] T4 Settings: trimmed settings model + file + store, new mode names, tests. Route: delegated writer.
 - [ ] T5 Scene + alert layer: alert parser/queue/tile layout, WebView2 layer controller,
@@ -69,5 +69,20 @@ Slice boundaries are recorded per task below once PRs exist.
 - Repo initialized on `main` (`03d0bd0`), branch `feat/cielwin-extraction`.
 - T2 done: RED = compile failures (ported tests, no production types); GREEN = 144 tests (Interop.Tests 122, App.Tests 22), 0 failed, 0 skipped; build 0 warnings.
 
+- T3 done: RED = compile failures (38 errors: ported tests, no Win32 production types); GREEN = 191 passed + 13 skipped
+  real-desktop (Interop.Tests 169 + 13 skipped, App.Tests 22), 0 failed; build 0 warnings. The 13 real-desktop facts also
+  passed (13/13) with `CIELWIN_RUN_DESKTOP_TESTS=1`. Cut vs reference: Media Foundation, D3D11/DXGI device + swapchain, D2D tint,
+  video transform/shake, `IVideoWallpaperHost`, Win32NativeWindowSource assertions; the DirectComposition device is created with a
+  null DXGI device (visual-only tree: root visual, no swapchain visual). Added `ISceneWallpaperHost` and a public
+  `MtaActionThread` (moved from `AppComposition`) so T7 can drive the host. Desktop test gate simplified (no RealDesktopLock).
+
+- Commits: T1 `84dc3ac`, T2 `a5d7d6b`.
+- Review T1+T2 (base `03d0bd0`..`a5d7d6b`): assessed medium, `slice_budget_reached`; user granted;
+  lens review-reliability approved and acknowledged (lineage review-181f97a56a24a410). Reviewed
+  boundary is now `a5d7d6b`.
+
+## Follow-ups (non-blocking review advice)
+- `AlertHttpTokenFile` abandoned-mutex path (`AlertHttpTokenFile.cs:137-144`) has no test.
+
 ## Next step
-T1.
+T3 Interop Win32.
