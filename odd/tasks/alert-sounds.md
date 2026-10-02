@@ -172,6 +172,10 @@ the document are pre-rewrite and no longer exist.
   file, 0 unreachable objects. User decision: text mentions in this document are fine; only the files had to go.
   Commit ids above this line are pre-squash.
 
+- Assess `658d12a..a0e1bb6`: medium, 246 lines, `review_due` false (`under_budget`).
+- Merged to `main` with the user's approval (2026-10-02): `11701e2` (`--no-ff`), tree identical to the tested
+  branch tip, no audio objects reachable from `main`. Not pushed.
+
 ## Next step
 
-Assess the unreviewed slice since the last reviewed boundary (`658d12a`, was `64d538b`), then the merge decision.
+None for this feature. Push is the user's decision.
