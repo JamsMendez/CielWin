@@ -165,6 +165,13 @@ the document are pre-rewrite and no longer exist.
 - Remove checked by hand (2026-10-02): `alert-sound removed kind=failed|warning` traced, both settings keys empty,
   sounds folder empty.
 
+- Squash approved by the user (2026-10-02): stage 1 (`c4efd2b..bb1d59c`, which no longer built after the purge) is
+  now one commit `b10fc32` on top of the fix merge `7d3594d`; stage 2 onward cherry-picked unchanged. Checks: the
+  squash tree equals the old `bb1d59c` tree, the new tip tree equals the old tip tree, `b10fc32` builds alone with
+  0 warnings; reflog expired + `gc --prune=now`: no audio objects, old commits gone, no commit message names an audio
+  file, 0 unreachable objects. User decision: text mentions in this document are fine; only the files had to go.
+  Commit ids above this line are pre-squash.
+
 ## Next step
 
-Merge decision: assess the unreviewed slice since `64d538b`; optionally squash stage-1 commits that no longer build.
+Assess the unreviewed slice since the last reviewed boundary (`658d12a`, was `64d538b`), then the merge decision.
