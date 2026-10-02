@@ -1,4 +1,5 @@
 using System.Globalization;
+using CielWin.App.Alerts;
 using CielWin.Interop;
 
 namespace CielWin.App;
@@ -58,6 +59,11 @@ public enum WallpaperScene
 /// Whether a newly shown alert plays its sound (<c>alert-sounds</c>). On by default, so a file written
 /// before the key existed keeps sounds on.
 /// </param>
+/// <param name="FailedSound">
+/// The imported sound a failed alert plays (<c>failed-sound</c>): a bare file name in
+/// <see cref="AlertSoundLibrary"/>'s folder, or <see langword="null"/> (the default) for silence.
+/// </param>
+/// <param name="WarningSound">The same for a warning alert (<c>warning-sound</c>).</param>
 /// <remarks>
 /// A flat <c>key = value</c> text file a person is expected to edit. Blank lines and <c>#</c> comments
 /// are ignored, unknown keys (including every key CosmicWin had that CielWin dropped) are skipped,
@@ -73,7 +79,9 @@ public sealed record Settings(
     WallpaperMode WallpaperMode = WallpaperMode.Scene,
     WallpaperScene WallpaperScene = WallpaperScene.Processing,
     MiniPosition MiniPosition = MiniPosition.TopRight,
-    bool AlertSoundsEnabled = true)
+    bool AlertSoundsEnabled = true,
+    string? FailedSound = null,
+    string? WarningSound = null)
 {
     public static Settings Default { get; } = new();
 
@@ -87,6 +95,18 @@ public sealed record Settings(
     private const string MiniPositionKey = "mini-position";
     private const string LegacyMiniPositionKey = "mini-corner";
     private const string AlertSoundsKey = "alert-sounds";
+    private const string FailedSoundKey = "failed-sound";
+    private const string WarningSoundKey = "warning-sound";
+
+    /// <summary>Whether either kind has an imported sound (the tray hides the mute toggle otherwise).</summary>
+    public bool HasAnySound => FailedSound is not null || WarningSound is not null;
+
+    /// <summary>The imported sound's file name for <paramref name="kind"/>, or <see langword="null"/>.</summary>
+    public string? SoundFor(AlertKind kind) => kind == AlertKind.Failed ? FailedSound : WarningSound;
+
+    /// <summary>These settings with <paramref name="kind"/>'s sound set to <paramref name="fileName"/> (null clears it).</summary>
+    public Settings WithSound(AlertKind kind, string? fileName) =>
+        kind == AlertKind.Failed ? this with { FailedSound = fileName } : this with { WarningSound = fileName };
 
     private static readonly (string Name, WallpaperMode Value)[] ModeNames =
     [
@@ -134,6 +154,7 @@ public sealed record Settings(
         int? port = null, legacyPort = null;
         MiniPosition? miniPosition = null, legacyMiniPosition = null;
         var alertSounds = Default.AlertSoundsEnabled;
+        string? failedSound = null, warningSound = null;
 
         foreach (var rawLine in content.Split('\n'))
         {
@@ -206,6 +227,12 @@ public sealed record Settings(
                 case AlertSoundsKey:
                     alertSounds = TryReadFlag(value) ?? alertSounds;
                     break;
+                case FailedSoundKey:
+                    failedSound = TryReadSound(value);
+                    break;
+                case WarningSoundKey:
+                    warningSound = TryReadSound(value);
+                    break;
             }
         }
 
@@ -215,7 +242,9 @@ public sealed record Settings(
             wallpaperMode,
             scene ?? legacyScene ?? Default.WallpaperScene,
             miniPosition ?? legacyMiniPosition ?? Default.MiniPosition,
-            alertSounds);
+            alertSounds,
+            failedSound,
+            warningSound);
     }
 
     /// <summary>The file this instance would be written as, comment and all.</summary>
@@ -250,6 +279,12 @@ public sealed record Settings(
          # toggled from the tray menu.
          {AlertSoundsKey} = {(AlertSoundsEnabled ? "on" : "off")}
 
+         # {FailedSoundKey} / {WarningSoundKey}: the sound each alert kind plays, imported from the tray
+         # menu (a .wav, .mp3 or .m4a copied into %LOCALAPPDATA%\CielWin\sounds\). Empty (default):
+         # that kind is silent. No sound ships with CielWin.
+         {FailedSoundKey} = {FailedSound}
+         {WarningSoundKey} = {WarningSound}
+
          """;
 
     private static string NameOf<T>((string Name, T Value)[] names, T value) =>
@@ -280,6 +315,13 @@ public sealed record Settings(
         "off" or "false" or "0" => false,
         _ => null,
     };
+
+    /// <summary>
+    /// A bare sound file name (see <see cref="AlertSoundLibrary.IsSoundFileName"/>); anything else,
+    /// including an empty value, is no sound. Unlike the other keys an unusable value clears the
+    /// sound rather than keeping an earlier one: silence is the safe reading.
+    /// </summary>
+    private static string? TryReadSound(string value) => AlertSoundLibrary.IsSoundFileName(value) ? value : null;
 
     /// <summary>Reads a TCP port, 1-65535; anything else (or not a whole number) is <see langword="null"/>.</summary>
     private static int? TryReadPort(string value) =>

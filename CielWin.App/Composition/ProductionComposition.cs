@@ -55,6 +55,7 @@ public static partial class ProductionComposition
         var settingsPath = SettingsFile.ResolvePath();
         var loaded = StartupSettings.Load(settingsPath, trace.Record);
         var dispatcher = Dispatcher.CurrentDispatcher;
+        var sounds = new AlertSoundLibrary(AlertSoundLibrary.ResolveDefaultDirectory());
 
         var host = new CompositionHost
         {
@@ -90,15 +91,8 @@ public static partial class ProductionComposition
             loaded,
             settings => SettingsFile.Save(settingsPath, settings, type => trace.Record($"settings-file save-failed error={type}")),
             host,
-            new SilentAlertSoundPlayer());
-    }
-
-    /// <summary>No sound ships with CielWin, so until one is imported every alert is silent.</summary>
-    private sealed class SilentAlertSoundPlayer : IAlertSoundPlayer
-    {
-        public void Play(AlertKind kind)
-        {
-        }
+            MediaAlertSoundPlayer.CreateProduction(
+                kind => loaded.Settings.SoundFor(kind) is { } name ? sounds.PathOf(name) : null, trace.Record));
     }
 
     private sealed class TimerStopper(DispatcherTimer timer) : IDisposable
