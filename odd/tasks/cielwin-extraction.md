@@ -52,7 +52,7 @@ Slice boundaries are recorded per task below once PRs exist.
 - [x] T3 Interop Win32: attach-only wallpaper host, composition overlay surface, mini window,
       fullscreen detector, tests. Route: delegated writer.
 - [x] T4 Settings: trimmed settings model + file + store, new mode names, tests. Route: delegated writer.
-- [ ] T5 Scene + alert layer: alert parser/queue/tile layout, WebView2 layer controller,
+- [x] T5 Scene + alert layer: alert parser/queue/tile layout, WebView2 layer controller,
       scene/alert web assets, node scene tests. Route: delegated writer.
 - [ ] T6 Mini: controller, browser, placement with `Previous`, failure policy, tests.
       Route: delegated writer.
@@ -76,12 +76,14 @@ Slice boundaries are recorded per task below once PRs exist.
   null DXGI device (visual-only tree: root visual, no swapchain visual). Added `ISceneWallpaperHost` and a public
   `MtaActionThread` (moved from `AppComposition`) so T7 can drive the host. Desktop test gate simplified (no RealDesktopLock).
 
-- Commits: T1 `84dc3ac`, T2 `a5d7d6b`, T3 `40825ce`.
+- Commits: T1 `84dc3ac`, T2 `a5d7d6b`, T3 `40825ce`, T4 `770508d`.
 - Review T1+T2 (base `03d0bd0`..`a5d7d6b`): assessed medium, `slice_budget_reached`; user granted;
   lens review-reliability approved and acknowledged (lineage review-181f97a56a24a410). Reviewed
   boundary is now `a5d7d6b`.
 - Review T3 (`a5d7d6b`..`40825ce`): medium, `slice_budget_reached`; user granted; review-reliability
   approved and acknowledged (lineage review-afbc04a19e59ecb6). Reviewed boundary is now `40825ce`.
+- Review T4 (`40825ce`..`770508d`): medium, `slice_budget_reached`; user granted; review-reliability
+  approved and acknowledged (lineage review-477834cb87a81a8c). Reviewed boundary is now `770508d`.
 
 - T4 done: RED = compile failures (68 errors: ported tests, no Settings types); GREEN = App.Tests 108 (was 22), Interop.Tests 169 + 13 skipped, 0 failed; build 0 warnings.
   Settings API in `CielWin.App`: `Settings(HttpServerEnabled, HttpServerPort, WallpaperMode, WallpaperScene, MiniPosition)`, `Settings.Parse/Serialize/Default`,
@@ -89,6 +91,14 @@ Slice boundaries are recorded per task below once PRs exist.
   `MiniPosition` (clockwise), `WallpaperScene` live in CielWin.App (Interop only validates the scene name as a string). Alias decisions: read-only legacy
   `wallpaper-mode = html|html-mini|mini`, `wallpaper-scene`, `mini-corner`, `alert-http`, `alert-http-port` (new keys win in any order); `video` and all
   tiling/border/gap/video-path/fps/alerts keys are ignored. Only new names are written.
+
+- T5 done: RED = compile failures (ported tests, no Alerts/Wallpaper production types); GREEN = App.Tests 257 (was 108), Interop.Tests 169 + 13 skipped, 0 failed;
+  build 0 warnings. App.Tests now takes ~3.5 min (node vm-sandbox scene harnesses). Controller: `WebViewAlertLayerController(ICompositionOverlaySurface host, trace, clock, WallpaperScene scene)`,
+  scene-only (no html/video flag, fps fixed 60, `SwitchScene` is void), user data `%LOCALAPPDATA%\CielWin\WebView2Scene`, virtual host `cielwin-scene.example`.
+  Fixed mosaic gap decision: `AlertTileLayout.GapPixels = 8` (no gap setting in CielWin). Cut vs reference: video tint (`AlertTint*`, `IAlertTintSink`,
+  `VideoPlayerAlertTintSink`, `AlertMaskDecoder`, tint messages), the video-mode `Alerts/Web/alert-layer.*` page + its fonts + `alert-layer-layout`/web-page tests (scene pages embed
+  `shared/js/alert-overlay.js`), `WebViewAlertLayerVisibility` (its only input was the html/video flag), composition-wiring tests (T7). Scene web assets copied wholesale (comments still
+  mention `alert-layer.js` as the original contract). Mini files are T6.
 
 ## Follow-ups (non-blocking review advice)
 - `AlertHttpTokenFile` abandoned-mutex path (`AlertHttpTokenFile.cs:137-144`) has no test.
@@ -98,6 +108,10 @@ Slice boundaries are recorded per task below once PRs exist.
   cannot tell the work never ran. Surface it (diagnostic or bool) in T7.
 - R3-003 `Win32SceneWallpaperHostRealAttachTests.cs:406-438`: real-desktop test weakness (warning).
 - R3-004 `ISceneWallpaperHost.cs:14-19`: doc suggestion.
+- T4 R3-001 `SettingsFile.cs:38-41`: a transient read failure silently yields defaults; a later
+  save (scene switch, Alt+M) would then overwrite the user's file. Fix in T7 (report + avoid save-over).
+- T4 R3-002 `SettingsFile.cs:98`: `File.WriteAllText` is not atomic; use temp file + replace. Fix in T7.
+- T4 R3-003 `SynchronizedSettingsStoreTests.cs:15-52`: test suggestion.
 
 ## Next step
-T5 Scene + alert layer.
+T6 Mini.

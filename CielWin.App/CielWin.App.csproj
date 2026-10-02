@@ -19,10 +19,7 @@
 
   <ItemGroup>
     <!-- Served through WebView2's SetVirtualHostNameToFolderMapping, which maps a virtual host to a
-         real folder, so these ship as loose content files next to the executable. -->
-    <Content Include="Alerts\Web\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+         real folder, so the scene pages ship as loose content files next to the executable. -->
     <Content Include="Wallpaper\Web\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
