@@ -37,11 +37,11 @@ public sealed class IdleSceneNodeTests
     /// of a <c>dotnet test</c> run that never comes back). Idle shares explorer's own js/earth.js
     /// (verbatim, identical family -- see the feature doc's D6c entry), which bakes a one-time
     /// equirectangular noise texture at LOAD time that costs several real seconds per FRESH vm
-    /// sandbox realm under Node; idle-scene.tests.js calls loadPage() 5 times (~25-30s observed),
-    /// so this keeps the same generous budget explorer's own harness uses (now 240s, raised from 90s for the
-    /// mini-variant cases, which add two more page loads).
+    /// sandbox realm under Node. idle-scene.tests.js now calls loadPage() 15 times (~212s observed
+    /// while the rest of the suite runs in parallel on a 16-thread dev machine), so this keeps the
+    /// same hang-guard budget explorer's own harness uses.
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromSeconds(240); // was 90: the mini-variant cases add 2 page loads, and a page load can cost ~8s on a busy machine
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 240s: timed out on the 2-core GitHub Actions runner
 
     [RequiresNodeFact]
     public void IdleSceneHarness_PassesAgainstTheRealShippedPage()
