@@ -4,6 +4,8 @@ CielWin shows an animated HTML scene as your Windows desktop wallpaper, or in a 
 window, and runs a loopback HTTP server that other tools use to switch the scene and show alerts.
 It runs as a normal user: no administrator rights, no installer.
 
+https://github.com/user-attachments/assets/e3471590-c9b3-4db1-8920-853eb182ff0f
+
 ## Quick path
 
 Prebuilt Windows builds are on the [Releases](https://github.com/JamsMendez/CielWin/releases) page:
