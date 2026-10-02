@@ -336,4 +336,12 @@ public sealed class SettingsTests
             settings);
         Assert.Equal(settings, Settings.Parse(settings.Serialize()));
     }
+
+    [Fact]
+    public void Serialize_NamesTheTokenFileTheServerActuallyUses()
+    {
+        var tokenFile = Path.GetFileName(CielWin.App.Alerts.AlertHttpTokenFile.ResolvePath());
+
+        Assert.Contains($@"%LOCALAPPDATA%\CielWin\{tokenFile}", Settings.Default.Serialize(), StringComparison.Ordinal);
+    }
 }

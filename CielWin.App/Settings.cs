@@ -219,7 +219,7 @@ public sealed record Settings(
          # {HttpServerKey}: on (default) runs the local HTTP server for scene switching and alerts;
          # off closes the port and disables both. Loopback-only (127.0.0.1 / localhost, never
          # reachable over the network); its bearer token lives in
-         # %LOCALAPPDATA%\CielWin\alert-http.token, created the first time the server starts.
+         # %LOCALAPPDATA%\CielWin\http.token, created the first time the server starts.
          {HttpServerKey} = {(HttpServerEnabled ? "on" : "off")}
 
          # {HttpServerPortKey}: the loopback TCP port the HTTP server listens on, 1-65535.
