@@ -160,6 +160,8 @@ the document are pre-rewrite and no longer exist.
   files `failed.m4a`/`warning.m4a` in the sounds folder); test alerts failed then warning on 43811 answered 202,
   no `alert sound-skipped|failed` traced.
 
+- User confirmed both imported sounds play (2026-10-02).
+
 ## Next step
 
-User confirms both sounds play, then remove entries and mute toggle by hand.
+Remove entries and mute toggle by hand (user), then merge decision.
