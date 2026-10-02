@@ -20,6 +20,9 @@
     <!-- Node vm-sandbox harnesses and shared check modules. The *NodeTests shell out to `node` and pass
          these files' resolved output paths; the scene harnesses require() the shared checks from their own
          directory. -->
+    <Content Include="Wallpaper\Web\processing-scene.tests.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Wallpaper\Web\constellation-ring.checks.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
