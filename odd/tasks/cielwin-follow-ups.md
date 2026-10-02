@@ -23,7 +23,7 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
 - [x] F1 Guard tray click (`TrayIconHost.cs:26-42`), mini hotkey move (`MiniSceneSurface.cs:97-98`) and hotkey
       registrar error swallowing (`Win32HotkeyRegistrar.cs:113-119`): exceptions are traced, never crash or vanish silently.
       Route: delegated writer (3 non-trivial files + tests).
-- [ ] F2 Startup failure trace: a throwing `ProductionComposition.Wire` (`App.xaml.cs`) writes a trace line before the
+- [x] F2 Startup failure trace: a throwing `ProductionComposition.Wire` (`App.xaml.cs`) writes a trace line before the
       process exits. Route: delegated writer (same writer as F1).
 - [ ] F3 Product decisions (ask one at a time):
   - [ ] F3a HTTP scene switch while mini window failed: keep 202 or reply 503 like CosmicWin.
@@ -47,7 +47,14 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   then (tray compiled) 2 `MiniModeWiringTests.AltM_When...` failed with the escaping `InvalidOperationException`
   ("no monitor", "move failed"). GREEN: filtered tests pass; full suites App 485 passed (was 480),
   Interop 184 passed + 16 skipped (was 182 + 16); `dotnet build --no-incremental` 0 warnings, 0 errors.
+  Commit `ffd4a48`.
+- F2 done (route: delegated writer). `ProductionComposition.Wire` creates the trace first, then runs the wiring
+  through `TraceStartupFailure`, which traces `startup wire-failed error=<Type>` and rethrows the same exception
+  (crash semantics unchanged; `App.xaml.cs` untouched). Exception type only, not the message: `FileTrace` and
+  `MtaActionThread` forbid messages (they can hold absolute paths). RED: CS0117 `TraceStartupFailure` missing (x3).
+  GREEN: 3 `StartupFailureTraceTests` pass; full suites App 488 passed, Interop 184 passed + 16 skipped;
+  `dotnet build --no-incremental` 0 warnings, 0 errors.
 
 ## Next step
 
-F1+F2 writer; ask F3a.
+Ask F3a.

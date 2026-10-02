@@ -14,13 +14,44 @@ namespace CielWin.App.Composition;
 /// </summary>
 /// <remarks>
 /// Not unit-tested as a whole: every piece it builds needs a live desktop. What it decides (settings
-/// read, trace sink) lives in <see cref="StartupSettings"/> and <see cref="FileTrace"/>, which are.
+/// read, trace sink, startup failure trace) lives in <see cref="StartupSettings"/>,
+/// <see cref="FileTrace"/> and <see cref="TraceStartupFailure{T}"/>, which are.
 /// </remarks>
 public static partial class ProductionComposition
 {
     public static AppComposition Wire(Action shutdown)
     {
         var trace = new FileTrace(FileTrace.ResolveDefaultPath());
+        return TraceStartupFailure(() => Wire(shutdown, trace), trace.Record);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="wire"/>; when it throws, traces the exception TYPE (never its message,
+    /// which can hold a path) and rethrows it unchanged, so the startup crash keeps its semantics but
+    /// leaves a line in trace.log. A throwing trace never replaces the original failure.
+    /// </summary>
+    internal static T TraceStartupFailure<T>(Func<T> wire, Action<string> trace)
+    {
+        try
+        {
+            return wire();
+        }
+        catch (Exception error)
+        {
+            try
+            {
+                trace($"startup wire-failed error={error.GetType().Name}");
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
+    }
+
+    private static AppComposition Wire(Action shutdown, FileTrace trace)
+    {
         var settingsPath = SettingsFile.ResolvePath();
         var loaded = StartupSettings.Load(settingsPath, trace.Record);
         var dispatcher = Dispatcher.CurrentDispatcher;
