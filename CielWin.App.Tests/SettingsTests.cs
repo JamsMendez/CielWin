@@ -15,7 +15,7 @@ public sealed class SettingsTests
         Assert.Equal(WallpaperMode.Scene, settings.WallpaperMode);
         Assert.True(settings.HttpServerEnabled);
         Assert.Equal(AlertHttpProtocol.DefaultPort, settings.HttpServerPort);
-        Assert.Equal(47811, settings.HttpServerPort);
+        Assert.Equal(43811, settings.HttpServerPort);
         Assert.Equal(WallpaperScene.Processing, settings.WallpaperScene);
         Assert.Equal(MiniPosition.TopRight, settings.MiniPosition);
         Assert.True(settings.AlertSoundsEnabled);

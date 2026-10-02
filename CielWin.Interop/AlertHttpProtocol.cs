@@ -33,7 +33,7 @@ public static class AlertHttpProtocol
     public const int MaxBodyBytes = 1024;
 
     /// <summary>The port used when the settings file does not name one.</summary>
-    public const int DefaultPort = 47811;
+    public const int DefaultPort = 43811;
 
     private const string InvalidJson = "body is not valid JSON";
 

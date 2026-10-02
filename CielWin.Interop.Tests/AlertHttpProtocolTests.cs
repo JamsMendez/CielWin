@@ -83,7 +83,7 @@ public sealed class AlertHttpProtocolTests
     {
         Assert.Equal("/v1/alerts", AlertHttpProtocol.AlertsPath);
         Assert.Equal(1024, AlertHttpProtocol.MaxBodyBytes);
-        Assert.Equal(47811, AlertHttpProtocol.DefaultPort);
+        Assert.Equal(43811, AlertHttpProtocol.DefaultPort);
     }
 
     private static string? Translate(string body)

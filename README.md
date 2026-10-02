@@ -128,7 +128,7 @@ File: `%LOCALAPPDATA%\CielWin\settings.conf`
 |-----|----------------|---------|
 | `wallpaper-mode` | `scene`, `scene-mini` | `scene` |
 | `http-server` | `on`, `off` (also `true`/`false`, `1`/`0`) | `on` |
-| `http-server-port` | `1`-`65535` | `47811` |
+| `http-server-port` | `1`-`65535` | `43811` |
 | `scene` | `processing`, `explorer`, `idle`, `raphael` | `processing` |
 | `mini-position` | `top-left`, `top-center`, `top-right`, `right-center`, `bottom-right`, `bottom-center`, `bottom-left`, `left-center` | `top-right` |
 | `alert-sounds` | `on`, `off` (also `true`/`false`, `1`/`0`) | `on` |
@@ -155,7 +155,7 @@ past 1 MB). Lines never contain the HTTP token.
 
 | Property | Value |
 |----------|-------|
-| Base URL | `http://127.0.0.1:47811` or `http://localhost:47811` (port = `http-server-port`) |
+| Base URL | `http://127.0.0.1:43811` or `http://localhost:43811` (port = `http-server-port`) |
 | Reachability | Loopback only |
 | Method | `POST` only |
 | Auth | `Authorization: Bearer <token>` |
@@ -177,7 +177,7 @@ Body: exactly one field, `scene`, one of `processing`, `explorer`, `idle`, `raph
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:47811/v1/wallpaper/scene \
+curl -X POST http://127.0.0.1:43811/v1/wallpaper/scene \
   -H "Authorization: Bearer $(cat "$LOCALAPPDATA/CielWin/http.token")" \
   -H "Content-Type: application/json" \
   -d '{"scene":"raphael"}'
@@ -185,7 +185,7 @@ curl -X POST http://127.0.0.1:47811/v1/wallpaper/scene \
 
 ```powershell
 $token = Get-Content "$env:LOCALAPPDATA\CielWin\http.token" -Raw
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47811/v1/wallpaper/scene `
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:43811/v1/wallpaper/scene `
   -Headers @{ Authorization = "Bearer $($token.Trim())" } `
   -ContentType application/json -Body '{"scene":"raphael"}'
 ```
@@ -209,7 +209,7 @@ Rules: at least one of `warning` / `failed` is required, and `warning + failed` 
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:47811/v1/alerts \
+curl -X POST http://127.0.0.1:43811/v1/alerts \
   -H "Authorization: Bearer $(cat "$LOCALAPPDATA/CielWin/http.token")" \
   -H "Content-Type: application/json" \
   -d '{"warning":2,"failed":1,"duration":5}'
@@ -217,7 +217,7 @@ curl -X POST http://127.0.0.1:47811/v1/alerts \
 
 ```powershell
 $token = Get-Content "$env:LOCALAPPDATA\CielWin\http.token" -Raw
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47811/v1/alerts `
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:43811/v1/alerts `
   -Headers @{ Authorization = "Bearer $($token.Trim())" } `
   -ContentType application/json -Body '{"warning":2,"failed":1,"duration":5}'
 ```
