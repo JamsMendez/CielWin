@@ -26,9 +26,15 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
 - [x] F2 Startup failure trace: a throwing `ProductionComposition.Wire` (`App.xaml.cs`) writes a trace line before the
       process exits. Route: delegated writer (same writer as F1).
 - [ ] F3 Product decisions (ask one at a time):
-  - [ ] F3a HTTP scene switch while mini window failed: keep 202 or reply 503 like CosmicWin.
+  - [x] F3a HTTP scene switch while mini window failed: keep 202 or reply 503 like CosmicWin.
+        Decision (user, 2026-10-02): keep 202. The scene is persisted and applied on recovery, which is what
+        "Accepted" means. No code change.
   - [ ] F3b Tray icon pale at 16-24 px on light taskbars.
-  - [ ] F3c Delete unused `CielWin.App/cielwin.ico`.
+        Decision (user, 2026-10-02): fix it. Thin dark outline and higher contrast at 16/20/24 px only, in
+        `tools/tray-icon/render-raphael-mini.mjs`, then regenerate `CielWin.App/Assets/raphael-mini.ico`.
+        Needs a manual visual check by the user. Route: delegated writer.
+  - [x] F3c Delete unused `CielWin.App/cielwin.ico`.
+        Decision (user, 2026-10-02): delete. Verified unreferenced by any `.csproj` or source. Route: inline.
 
 ## Acceptance criteria
 
@@ -53,8 +59,10 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
   (crash semantics unchanged; `App.xaml.cs` untouched). Exception type only, not the message: `FileTrace` and
   `MtaActionThread` forbid messages (they can hold absolute paths). RED: CS0117 `TraceStartupFailure` missing (x3).
   GREEN: 3 `StartupFailureTraceTests` pass; full suites App 488 passed, Interop 184 passed + 16 skipped;
-  `dotnet build --no-incremental` 0 warnings, 0 errors.
+  `dotnet build --no-incremental` 0 warnings, 0 errors. Commit `047ea3b`. Parent spot check: 16 focused tests pass.
+- Review assess `868364d..047ea3b`: risk medium, `review_due` false (`under_budget`); stays pending in the slice.
+- F3a decided (keep 202), F3c done: `cielwin.ico` deleted.
 
 ## Next step
 
-Ask F3a.
+F3b icon contrast fix, then the user's visual check.
