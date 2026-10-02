@@ -96,8 +96,8 @@ Decisions:
 - The "Alert sounds" mute toggle is hidden until at least one sound is imported.
 - A missing or unplayable imported file is traced (type name / reason code only) and stays silent; never throws.
 
-Open before merge: the user's m4a/wav are in this branch's history (`3155617`, `ec2b051`'s ancestors). They must not
-reach `main`/remote history: squash or rewrite the branch before merging (needs user approval).
+Resolved: every sound file was purged from this branch's history (see Progress). Commit ids above this point in
+the document are pre-rewrite and no longer exist.
 
 - [x] I1 Remove built-in sounds: `CielWin.App/Assets/Sounds/*`, the csproj embedding, `EmbeddedAlertSoundPlayer`,
       `tools/alert-sounds/**`, and their tests. Route: delegated writer.
@@ -120,8 +120,15 @@ reach `main`/remote history: squash or rewrite the branch before merging (needs 
   GREEN: App 586 passed, Interop 189 + 16 skipped, `dotnet build --no-incremental` 0 warnings.
   Untested by design: real `MediaPlayer` and `OpenFileDialog` (manual check). Known risk: re-importing a kind while
   its sound plays may hit a file lock (traced `import-failed`, previous sound kept).
-- History rewrite approved by the user (2026-10-02): purge every sound file from `main..feat/alert-sounds`.
+- History rewrite approved by the user (2026-10-02): `git filter-branch --index-filter` over `main..feat/alert-sounds`
+  removed `CielWin.App/Assets/Sounds` and `tools/alert-sounds/source` from every commit (two subjects reworded to
+  match their content); `refs/original` deleted, reflog expired, `git gc --prune=now`. Checks: no `.wav/.m4a/.mp3`
+  in `git rev-list --all --reflog --objects`; old commits gone; 0 unreachable objects; branch never pushed (no remote
+  branch contained them). `main` and `fix/mini-topmost-reassert` untouched. Post-rewrite: `dotnet build
+  --no-incremental` 0 warnings; App 586 passed, Interop 189 + 16 skipped. Note: commits from the generator script
+  up to the I1 removal reference WAV resources that no longer exist in history, so those intermediate commits do not
+  build on their own; the branch tip does.
 
 ## Next step
 
-Rewrite history, verify, then the user's manual check of import/play/remove/menu visibility.
+User's manual check of import/play/remove/menu visibility.
