@@ -172,6 +172,13 @@ Slice boundaries are recorded per task below once PRs exist.
   HTTP scene switch while mini failed replies 202 (CosmicWin 503); 16-24 px icon pale on light taskbars; old
   `CielWin.App/cielwin.ico` now unused.
 
+- T7 reviews: `a728b2e..d9f2496` (hotkeys+tray, 1 lens) approved+ack; `d9f2496..1248a4a` (composition, 1 lens)
+  approved+ack; `1248a4a..3f2850f` (production entry, 387 lines) assessed medium `under_budget`, pending in the
+  next slice. Informational: WARNING `Win32HotkeyRegistrar.cs:113-119` swallows errors silently, WARNING
+  `TrayIconHost.cs:26-42` tray click unguarded, WARNING `MiniSceneSurface.cs:97-98` hotkey move unguarded;
+  suggestions: generator has no timeouts (`render-raphael-mini.mjs:100-103`), `TrayGlyphs.cs:42-60` bitmap leak,
+  hotkey test leak on failure, old icon resource removed (`CielWin.App.csproj:18`), partial surface leak
+  (`AppComposition.cs:166-168`).
 - T6 review (`3ce61fd..2ba405d`, 1 lens) approved+ack (informational): R3-001 `MiniSceneWindowController.cs:176-179`
   and R3-002 `:227-231` (warnings), R3-003 `WebView2MiniSceneBrowser.cs:95-101`, R3-004 `MiniSceneWindowController.cs:175`
   (suggestions).
