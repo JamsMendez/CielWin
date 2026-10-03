@@ -60,7 +60,14 @@ public sealed class MiniSceneWindowControllerTests
             return AttachResult.Task;
         }
 
-        public void Navigate(string url) => Navigations.Add(url);
+        public bool ThrowOnNavigate;
+
+        public void Navigate(string url)
+        {
+            if (ThrowOnNavigate) throw new InvalidOperationException("navigate failed");
+            Navigations.Add(url);
+        }
+
         public void Resize(DrawingRectangle viewport) => Resizes.Add(viewport);
         public void PostMessage(string json) => Messages.Add(json);
         public void Dispose() => DisposeCount++;
@@ -658,9 +665,83 @@ public sealed class MiniSceneWindowControllerTests
         Assert.False(_frames.Running);
     }
 
+    [Fact]
+    public void AGlideThatFailsToLandIsTracedStopsAndReportsThePlacementLost()
+    {
+        var surface = new ThrowingOnceSurface();
+        var browser = new FakeBrowser();
+        var controller = new MiniSceneWindowController(() => surface, browser, _trace.Add, () => _now, _frames);
+        controller.Show(WallpaperScene.Processing, Corner);
+        browser.AttachResult.SetResult(true);
+        var lost = 0;
+        controller.PlacementLost += () => lost++;
+        controller.GlideTo(Far);
+        surface.ThrowAlways = true;
+
+        Advance(50);
+        var error = Record.Exception(_frames.Frame);
+
+        Assert.Null(error);
+        Assert.Contains("mini-window: glide-land-failed error=InvalidOperationException", _trace);
+        Assert.False(_frames.Running);
+        Assert.Equal(1, lost);
+    }
+
+    [Fact]
+    public void AGlideThatLandsNeverReportsThePlacementLost()
+    {
+        var (controller, _, _) = Attached();
+        var lost = 0;
+        controller.PlacementLost += () => lost++;
+        controller.GlideTo(Far);
+
+        Advance(1000);
+        _frames.Frame();
+
+        Assert.Equal(0, lost);
+    }
+
+    [Fact]
+    public void ShowMidGlideStopsItAndLaterFramesNeverPlace()
+    {
+        var (controller, surface, _) = Attached();
+        var other = InteropRectangle.FromSize(0, 1000, 288, 288);
+        controller.GlideTo(Far);
+        Advance(50);
+        _frames.Frame();
+
+        controller.Show(WallpaperScene.Processing, other);
+        Assert.False(_frames.Running);
+        var placed = surface.Placed.Count;
+        Advance(50);
+        _frames.Frame();
+
+        Assert.Equal(placed, surface.Placed.Count);
+        Assert.Equal(other, surface.Placed[^1]);
+    }
+
+    [Fact]
+    public void ShowMidGlideStopsItEvenWhenTheSceneSwitchThrows()
+    {
+        var (controller, surface, browser) = Attached();
+        controller.GlideTo(Far);
+        Advance(50);
+        _frames.Frame();
+        browser.ThrowOnNavigate = true;
+
+        Assert.Throws<InvalidOperationException>(() => controller.Show(WallpaperScene.Explorer, Corner));
+        var placed = surface.Placed.Count;
+        Advance(50);
+        _frames.Frame();
+
+        Assert.False(_frames.Running);
+        Assert.Equal(placed, surface.Placed.Count);
+    }
+
     private sealed class ThrowingOnceSurface : IMiniSceneSurface
     {
         public bool ThrowNext;
+        public bool ThrowAlways;
         public List<InteropRectangle> Placed { get; } = [];
         public nint Hwnd => 42;
         public bool IsCompositionReady => true;
@@ -670,6 +751,7 @@ public sealed class MiniSceneWindowControllerTests
 
         public bool Place(InteropRectangle bounds)
         {
+            if (ThrowAlways) throw new InvalidOperationException("place failed");
             if (ThrowNext)
             {
                 ThrowNext = false;

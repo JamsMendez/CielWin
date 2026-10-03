@@ -294,6 +294,11 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
         if (ThrowAfterMove) throw new InvalidOperationException("move failed after moving");
     }
 
+    public event Action? PlacementLost;
+
+    /// <summary>Reports the window's placement unknown, as a glide that failed to land does.</summary>
+    public void RaisePlacementLost() => PlacementLost?.Invoke();
+
     public void ShowAlert(AlertShowRequest request) => Alerts.Add(request);
     public void HideAlert() => Hides++;
     public void Dispose() => DisposeCalls++;

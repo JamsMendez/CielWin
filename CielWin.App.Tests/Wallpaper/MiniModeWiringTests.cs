@@ -357,4 +357,25 @@ public sealed class MiniModeWiringTests
 
         Assert.Single(harness.Mini.Moves);
     }
+
+    /// <summary>
+    /// A glide that fails to land leaves the window somewhere unknown: the window reports its placement
+    /// lost, and the next tick re-places it at the confirmed position (persisted as before, not again).
+    /// </summary>
+    [Fact]
+    public void AGlideThatFailsToLand_IsRePlacedAtTheConfirmedPositionOnTheNextTick()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(Mini(MiniPosition.TopLeft));
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+        var saves = harness.Saves.Count;
+
+        harness.Mini.RaisePlacementLost();
+        harness.Tick();
+
+        Assert.Equal(2, harness.Mini.Moves.Count);
+        Assert.Equal(PlacementFor(MiniPosition.TopCenter, harness.Display), harness.Mini.Moves[^1]);
+        Assert.Single(harness.Mini.Glides);
+        Assert.Equal(saves, harness.Saves.Count);
+    }
 }

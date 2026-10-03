@@ -38,6 +38,12 @@ public interface IMiniSceneWindow : IDisposable
     /// </summary>
     void GlideTo(Rectangle bounds);
 
+    /// <summary>
+    /// Raised (on the owning UI thread) when a glide could not land on its target: the window may be left
+    /// anywhere along the way, so whoever tracks its placement must treat it as unknown and re-place it.
+    /// </summary>
+    event Action? PlacementLost;
+
     /// <summary>Forwards an alert to the page (posted as soon as the page is ready).</summary>
     void ShowAlert(AlertShowRequest request);
 
@@ -119,6 +125,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
 
     public bool IsReady => _attached && !_disposed;
 
+    public event Action? PlacementLost;
+
     /// <summary>How long a <see cref="GlideTo"/> takes: short enough to never feel sluggish.</summary>
     public static readonly TimeSpan GlideDuration = TimeSpan.FromMilliseconds(220);
 
@@ -145,6 +153,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     {
         CheckAccess();
         ObjectDisposedException.ThrowIf(_disposed, this);
+        // A stale glide must never override the bounds this show places, even when the switch throws.
+        StopGlide();
         if (_surface is not null)
         {
             SwitchScene(scene);
@@ -302,7 +312,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     /// <summary>
     /// One glide frame: places the interpolated bounds (no viewport resize), and on the last frame lands on
     /// the target through <see cref="MoveTo"/>, which resizes the viewport once if the size changed. Runs
-    /// inside the dispatcher, so nothing escapes: a failure is traced and the window is put on the target.
+    /// inside the dispatcher, so nothing escapes: a failure is traced and the window is put on the target; if
+    /// even that fails, <see cref="PlacementLost"/> is raised so the owner re-places the window later.
     /// </summary>
     private void OnFrame()
     {
@@ -337,7 +348,20 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
             {
                 StopGlide();
                 _trace?.Invoke($"mini-window: glide-land-failed error={retry.GetType().Name}");
+                ReportPlacementLost();
             }
+        }
+    }
+
+    private void ReportPlacementLost()
+    {
+        try
+        {
+            PlacementLost?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _trace?.Invoke($"mini-window: placement-lost-handler-failed error={ex.GetType().Name}");
         }
     }
 
