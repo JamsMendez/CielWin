@@ -6,6 +6,21 @@ using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CielWin.Interop.Win32;
 
+/// <summary>Which modifier keys <c>GetAsyncKeyState</c> reported down when a hook event arrived.</summary>
+internal readonly record struct ModifierSnapshot(bool Alt, bool Control, bool Shift, bool LeftWin, bool RightWin)
+{
+    /// <summary>The chord modifiers this snapshot holds; either Win key is <see cref="HotkeyModifiers.Win"/>.</summary>
+    public HotkeyModifiers ToHotkeyModifiers()
+    {
+        var held = HotkeyModifiers.None;
+        if (Alt) held |= HotkeyModifiers.Alt;
+        if (Control) held |= HotkeyModifiers.Control;
+        if (Shift) held |= HotkeyModifiers.Shift;
+        if (LeftWin || RightWin) held |= HotkeyModifiers.Win;
+        return held;
+    }
+}
+
 /// <summary>
 /// Global hotkeys through a <c>WH_KEYBOARD_LL</c> hook that owns the WHOLE key stroke of a chord.
 /// </summary>
@@ -108,7 +123,7 @@ public sealed unsafe class Win32KeyboardHookRegistrar : IHotkeyRegistrar
     /// fired chord raises <see cref="Pressed"/> and injects the mask key. Nothing ever escapes: an
     /// exception must not unwind through a native hook, not even one thrown by the failure callback.
     /// </summary>
-    internal bool HandleKey(uint virtualKey, bool isDown, HotkeyModifiers held)
+    internal bool HandleKey(uint virtualKey, bool isDown, HotkeyModifiers held, uint time)
     {
         KeyDecision decision;
         lock (_gate)
@@ -118,7 +133,7 @@ public sealed unsafe class Win32KeyboardHookRegistrar : IHotkeyRegistrar
                 return false;
             }
 
-            decision = _matcher.OnKey(virtualKey, isDown, held);
+            decision = _matcher.OnKey(virtualKey, isDown, held, time);
         }
 
         if (decision.FiredId is { } id)
@@ -211,16 +226,27 @@ public sealed unsafe class Win32KeyboardHookRegistrar : IHotkeyRegistrar
         }
     }
 
+    /// <summary>
+    /// The hook callback's translation from its native inputs, testable without a hook: the window
+    /// message (<c>WM_KEYDOWN</c>/<c>WM_SYSKEYDOWN</c> is a down, <c>WM_KEYUP</c>/<c>WM_SYSKEYUP</c> an
+    /// up, anything else passes untouched), the event's <c>vkCode</c> and <c>time</c>, and the modifier
+    /// snapshot. True when the event must be swallowed.
+    /// </summary>
+    internal bool HandleHookEvent(uint message, uint virtualKey, uint time, ModifierSnapshot modifiers)
+    {
+        var isDown = message is PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN;
+        var isUp = message is PInvoke.WM_KEYUP or PInvoke.WM_SYSKEYUP;
+        return (isDown || isUp) && HandleKey(virtualKey, isDown, modifiers.ToHotkeyModifiers(), time);
+    }
+
     private LRESULT HookProc(int code, WPARAM wParam, LPARAM lParam)
     {
         try
         {
             if (code >= 0)
             {
-                var message = (uint)wParam.Value;
-                var isDown = message is PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN;
-                var isUp = message is PInvoke.WM_KEYUP or PInvoke.WM_SYSKEYUP;
-                if ((isDown || isUp) && HandleKey(((KBDLLHOOKSTRUCT*)lParam.Value)->vkCode, isDown, HeldModifiers()))
+                var input = (KBDLLHOOKSTRUCT*)lParam.Value;
+                if (HandleHookEvent((uint)wParam.Value, input->vkCode, input->time, ReadModifiers()))
                 {
                     return new LRESULT(1);
                 }
@@ -235,14 +261,14 @@ public sealed unsafe class Win32KeyboardHookRegistrar : IHotkeyRegistrar
     }
 
     /// <summary>The modifiers held right now (the hook sees the state before the current key's event).</summary>
-    private static HotkeyModifiers HeldModifiers()
+    private static ModifierSnapshot ReadModifiers()
     {
-        var held = HotkeyModifiers.None;
-        if (IsDown(VkMenu)) held |= HotkeyModifiers.Alt;
-        if (IsDown(VkControl)) held |= HotkeyModifiers.Control;
-        if (IsDown(VkShift)) held |= HotkeyModifiers.Shift;
-        if (IsDown(VkLeftWin) || IsDown(VkRightWin)) held |= HotkeyModifiers.Win;
-        return held;
+        return new ModifierSnapshot(
+            Alt: IsDown(VkMenu),
+            Control: IsDown(VkControl),
+            Shift: IsDown(VkShift),
+            LeftWin: IsDown(VkLeftWin),
+            RightWin: IsDown(VkRightWin));
 
         static bool IsDown(int virtualKey) => PInvoke.GetAsyncKeyState(virtualKey) < 0;
     }

@@ -28,6 +28,11 @@ internal readonly record struct KeyDecision(bool Swallowed, int? FiredId)
 /// <para>
 /// Exact means exact: Ctrl+Alt (AltGr on many layouts) or a held Win key never matches an Alt chord,
 /// and a key already held before the modifiers went down is ordinary typing and passes, up included.
+/// </para>
+/// <para>
+/// The matcher learns a key went up only from the up event; one the hook never saw would leave the key
+/// "held" forever. Each event therefore carries its time (<c>KBDLLHOOKSTRUCT.time</c>), and a down more
+/// than <see cref="StaleThresholdMs"/> after that key's last event starts afresh.
 /// Not thread-safe: the owner serializes <see cref="Register"/> and <see cref="OnKey"/>.
 /// </para>
 /// </remarks>
@@ -39,11 +44,21 @@ internal sealed class KeyboardChordMatcher
     /// </summary>
     public const uint MaskKey = 0xE8;
 
+    /// <summary>
+    /// How long after the last event of a key believed down another down of it still counts as that
+    /// key's auto-repeat, in milliseconds. Windows waits at most 1000 ms (keyboard delay 3) before the
+    /// first repeat and repeats at least ~2.5 times a second after that, so a held key never goes this
+    /// long without an event. A later down means the key up was missed (secure desktop, lock screen,
+    /// Windows dropping the hook): the stale state is forgotten and the down is a fresh one.
+    /// </summary>
+    public const uint StaleThresholdMs = 1500;
+
     private const HotkeyModifiers ChordModifiers =
         HotkeyModifiers.Alt | HotkeyModifiers.Control | HotkeyModifiers.Shift | HotkeyModifiers.Win;
 
     private readonly List<Chord> _chords = [];
-    private readonly HashSet<uint> _down = [];
+    /// <summary>The registered keys believed down, with the time of each one's last event.</summary>
+    private readonly Dictionary<uint, uint> _down = [];
     private readonly Dictionary<uint, Chord> _swallowing = [];
 
     /// <summary>
@@ -70,9 +85,10 @@ internal sealed class KeyboardChordMatcher
 
     /// <summary>
     /// Decides one key event. <paramref name="held"/> is the modifier state at the event (only the Alt,
-    /// Control, Shift and Win bits are read).
+    /// Control, Shift and Win bits are read); <paramref name="time"/> is the event's millisecond tick
+    /// count, which wraps, so intervals are measured with unsigned subtraction.
     /// </summary>
-    public KeyDecision OnKey(uint virtualKey, bool isDown, HotkeyModifiers held)
+    public KeyDecision OnKey(uint virtualKey, bool isDown, HotkeyModifiers held, uint time)
     {
         if (!_chords.Exists(chord => chord.VirtualKey == virtualKey))
         {
@@ -85,16 +101,25 @@ internal sealed class KeyboardChordMatcher
             return _swallowing.Remove(virtualKey) ? KeyDecision.Swallow : KeyDecision.Pass;
         }
 
-        if (_swallowing.TryGetValue(virtualKey, out var active))
+        if (_down.TryGetValue(virtualKey, out var last))
         {
-            // An auto-repeat of a chord that already fired.
-            return active.NoRepeat ? KeyDecision.Swallow : KeyDecision.Fire(active.Id);
+            if (unchecked(time - last) <= StaleThresholdMs)
+            {
+                _down[virtualKey] = time;
+                if (_swallowing.TryGetValue(virtualKey, out var active))
+                {
+                    // An auto-repeat of a chord that already fired.
+                    return active.NoRepeat ? KeyDecision.Swallow : KeyDecision.Fire(active.Id);
+                }
+
+                return KeyDecision.Pass; // a repeat of a key that was not a chord when it went down
+            }
+
+            // Its key up was missed: forget the stale stroke and take this down as a fresh one.
+            _swallowing.Remove(virtualKey);
         }
 
-        if (!_down.Add(virtualKey))
-        {
-            return KeyDecision.Pass; // a repeat of a key that was not a chord when it went down
-        }
+        _down[virtualKey] = time;
 
         held &= ChordModifiers;
         var match = _chords.Find(chord => chord.VirtualKey == virtualKey && chord.Modifiers == held);
