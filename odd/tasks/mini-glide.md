@@ -17,7 +17,8 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
 - Non-hotkey placements (show, watch-tick re-place after a taskbar change) stay instant and cancel a running glide.
 - The browser viewport is resized once, at the end of the glide, never per frame.
 - Alt+M leak: reproduced only in the user's Alacritty running WSL (`cat -v` shows bare `m`/`M` per auto-repeat,
-  no ESC prefix); not reproduced with injected input into WT/Alacritty running PowerShell. Fix decision pending (G2).
+  no ESC prefix); not reproduced with injected input into WT/Alacritty running PowerShell. Fixed with a
+  low-level keyboard hook (G2).
 
 ## Constraints
 
@@ -33,13 +34,20 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
       606/606; parent spot check 69/69 (glide/controller/wiring filter). Pending: manual check in the running app.
       Commit `0a04654`. RDD: medium, granted, 1-lens review approved and acknowledged (lineage
       `review-dd30578e4cd4461f`, authority burned).
-- [ ] G1b Review advisories (in scope): (a) a glide land failure leaves `MiniSceneSurface._placed` at the target, so
-      ticks never re-place a window stuck mid-glide; (b) `Show`/`Hide` do not stop a running glide.
-- [ ] G2 Alt+M leak: replace RegisterHotKey for the two chords with a WH_KEYBOARD_LL hook on a dedicated thread
-      (swallow M down/repeats/up on a fresh M down with Alt held and no Ctrl/Win; VK 0xE8 mask against Alt-menu).
-      Prototype evidence: injected self-test identical to baseline for plain m, Ctrl+Alt+M, Alt tap menu, M-then-Alt;
-      Alt+M no longer reaches the window. User manual test in Alacritty->WSL `cat -v`: nothing typed (40 chords
-      swallowed). Awaiting go-ahead to implement in CielWin.
+- [x] G1b Review advisories. Route: delegated (writer). (a) `IMiniSceneWindow.PlacementLost` raised when a glide
+      fails to land; `MiniSceneSurface` clears `_placed` so the next tick re-places at the confirmed `Position`
+      (persist semantics unchanged). (b) `Show` stops a running glide first (the controller has no `Hide`; `MoveTo`
+      and `Dispose` already stopped it). RED: 3 failing (land-failure reports placement lost; wiring tick re-places;
+      Show mid-glide with a throwing scene switch). Show-mid-glide plain case was already green (Show->MoveTo
+      stopped it). GREEN: App.Tests 611/611, Interop.Tests 189 passed / 20 skipped. Commit `a314ee6`.
+- [x] G2 Alt+M leak. Route: delegated (writer). `Win32KeyboardHookRegistrar` (WH_KEYBOARD_LL on its own background
+      thread with a GetMessage loop; swallows fresh down, repeats and up; injects VK 0xE8 after firing) behind
+      `IHotkeyRegistrar`; pure `KeyboardChordMatcher` (exact modifiers: Ctrl+Alt/Win never match; key held before
+      Alt passes). Production falls back to `Win32HotkeyRegistrar` with `hotkey hook-unavailable error=...`.
+      `Pressed` now raised on the hook thread; `AppComposition` already posts via `OnUiThread`. RED: matcher 10
+      failing, fallback choice 3 failing. GREEN: App.Tests 614/614, Interop.Tests 210 passed / 22 skipped;
+      opt-in real-hook lifecycle facts (`CIELWIN_RUN_DESKTOP_TESTS=1`) passed. Commit `c4be138`.
+      Pending: the user's manual re-check with the real app (Alacritty->WSL `cat -v`, Alt tap menu, AltGr).
 
 ## Acceptance
 
@@ -49,4 +57,5 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
 
 ## Progress
 
-- G1 done (commit recorded below). Next: G2 after the user's decision.
+- G1, G1b, G2 done (commits recorded above). Next: user's manual check of the glide and of Alt+M in the real
+  app; then RDD assessment for `a314ee6..c4be138` and delivery under repository policy.
