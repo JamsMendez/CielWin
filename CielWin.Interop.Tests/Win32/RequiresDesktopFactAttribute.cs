@@ -41,3 +41,18 @@ internal sealed class RequiresRaisedDesktopLayoutFactAttribute : FactAttribute
         }
     }
 }
+
+/// <summary>
+/// The opt-in alone: for facts that need an interactive session but share nothing with a running
+/// CielWin (a low-level keyboard hook coexists with another one).
+/// </summary>
+internal sealed class RequiresDesktopOptInFactAttribute : FactAttribute
+{
+    public RequiresDesktopOptInFactAttribute()
+    {
+        if (DesktopGate.OptInSkipReason() is { } reason)
+        {
+            Skip = reason;
+        }
+    }
+}

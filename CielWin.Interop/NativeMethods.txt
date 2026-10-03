@@ -50,3 +50,17 @@ DCompositionCreateDevice
 IDCompositionDevice
 IDCompositionTarget
 IDCompositionVisual
+SetWindowsHookEx
+UnhookWindowsHookEx
+CallNextHookEx
+KBDLLHOOKSTRUCT
+GetMessage
+PostThreadMessage
+GetCurrentThreadId
+GetAsyncKeyState
+SendInput
+WM_QUIT
+WM_KEYDOWN
+WM_KEYUP
+WM_SYSKEYDOWN
+WM_SYSKEYUP

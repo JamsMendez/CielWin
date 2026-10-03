@@ -21,7 +21,7 @@ internal sealed class MiniSceneSurface(
     Action<string> trace) : ISceneSurface
 {
     private bool _shown;
-    /// <summary>Where the window was last confirmed to sit; null when unknown (a move threw).</summary>
+    /// <summary>Where the window was last confirmed to sit; null when unknown (a move threw or a glide failed to land).</summary>
     private Rectangle? _placed;
     private bool _displayReadFailing;
 
@@ -30,6 +30,7 @@ internal sealed class MiniSceneSurface(
 
     public void Start()
     {
+        window.PlacementLost += OnPlacementLost;
         try
         {
             var bounds = Placement(Position);
@@ -83,7 +84,7 @@ internal sealed class MiniSceneSurface(
     }
 
     /// <summary>
-    /// Moves the window to <paramref name="next"/>. Refused (false, traced) while the window failed to
+    /// Glides the window to <paramref name="next"/> (show and tick re-placements stay instant). Refused (false, traced) while the window failed to
     /// show or its browser is not attached, so a position is never persisted for a window that is not
     /// really there. A failing display read or move is refused the same way: it runs as a posted
     /// dispatcher operation, where an escaping exception would end the app. A move that throws may
@@ -102,7 +103,9 @@ internal sealed class MiniSceneSurface(
         {
             var bounds = Placement(next);
             _placed = null; // unknown until the move returns: a throwing move may have moved the window
-            window.MoveTo(bounds);
+            window.GlideTo(bounds);
+            // The glide's target, so a tick mid-glide finds nothing to re-place and lets it run. A glide
+            // that later fails to land raises PlacementLost, which clears this again.
             _placed = bounds;
         }
         catch (Exception error)
@@ -115,11 +118,18 @@ internal sealed class MiniSceneSurface(
         return true;
     }
 
+    /// <summary>A glide failed to land: the window sits somewhere unknown, so the next tick re-places it.</summary>
+    private void OnPlacementLost() => _placed = null;
+
     private Rectangle Placement(MiniPosition corner)
     {
         var display = readDisplay();
         return MiniWindowPlacement.Compute(display.WorkArea, display.Bounds.Height, corner);
     }
 
-    public void Dispose() => window.Dispose();
+    public void Dispose()
+    {
+        window.PlacementLost -= OnPlacementLost;
+        window.Dispose();
+    }
 }
