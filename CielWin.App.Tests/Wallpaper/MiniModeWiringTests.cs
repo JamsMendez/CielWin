@@ -324,6 +324,37 @@ public sealed class MiniModeWiringTests
         harness.Tick();
 
         Assert.Equal([PlacementFor(MiniPosition.BottomRight, moved)], harness.Mini.Moves);
+        Assert.Empty(harness.Mini.Glides);
         Assert.Empty(harness.Saves);
+    }
+
+    [Fact]
+    public void AltM_GlidesTheWindowToTheNextPosition()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(Mini(MiniPosition.TopLeft));
+
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+        harness.Hotkeys.Press(MiniPositionHotkeys.CounterClockwiseId);
+
+        Assert.Equal(
+            [PlacementFor(MiniPosition.TopCenter, harness.Display), PlacementFor(MiniPosition.TopLeft, harness.Display)],
+            harness.Mini.Glides);
+    }
+
+    /// <summary>
+    /// The surface records the glide TARGET as placed: a tick mid-glide sees nothing to re-place and lets
+    /// the glide run, instead of snapping the window back.
+    /// </summary>
+    [Fact]
+    public void ATickDuringAGlideDoesNotInterruptIt()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(Mini(MiniPosition.TopLeft));
+
+        harness.Hotkeys.Press(MiniPositionHotkeys.ClockwiseId);
+        harness.Tick();
+
+        Assert.Single(harness.Mini.Moves);
     }
 }

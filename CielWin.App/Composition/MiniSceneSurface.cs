@@ -83,7 +83,7 @@ internal sealed class MiniSceneSurface(
     }
 
     /// <summary>
-    /// Moves the window to <paramref name="next"/>. Refused (false, traced) while the window failed to
+    /// Glides the window to <paramref name="next"/> (show and tick re-placements stay instant). Refused (false, traced) while the window failed to
     /// show or its browser is not attached, so a position is never persisted for a window that is not
     /// really there. A failing display read or move is refused the same way: it runs as a posted
     /// dispatcher operation, where an escaping exception would end the app. A move that throws may
@@ -102,7 +102,8 @@ internal sealed class MiniSceneSurface(
         {
             var bounds = Placement(next);
             _placed = null; // unknown until the move returns: a throwing move may have moved the window
-            window.MoveTo(bounds);
+            window.GlideTo(bounds);
+            // The glide's target, so a tick mid-glide finds nothing to re-place and lets it run.
             _placed = bounds;
         }
         catch (Exception error)

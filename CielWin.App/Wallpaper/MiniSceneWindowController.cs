@@ -28,8 +28,15 @@ public interface IMiniSceneWindow : IDisposable
     /// <summary>Switches scene live. The current scene again is an accepted no-op returning true.</summary>
     bool SwitchScene(WallpaperScene scene);
 
-    /// <summary>Moves the window (physical pixels), never activating it.</summary>
+    /// <summary>Moves the window (physical pixels) at once, never activating it. Cancels a running glide.</summary>
     void MoveTo(Rectangle bounds);
+
+    /// <summary>
+    /// Glides the window to <paramref name="bounds"/> (physical pixels) over <see
+    /// cref="MiniSceneWindowController.GlideDuration"/>, never activating it. A glide already running is
+    /// retargeted from where the window is now; with no known current bounds the window is placed at once.
+    /// </summary>
+    void GlideTo(Rectangle bounds);
 
     /// <summary>Forwards an alert to the page (posted as soon as the page is ready).</summary>
     void ShowAlert(AlertShowRequest request);
@@ -85,6 +92,10 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     public static readonly TimeSpan StableWindow = TimeSpan.FromMinutes(10);
 
     private readonly Func<DateTimeOffset> _clock;
+    private readonly IFrameSource? _frames;
+    // Where the window sits now (a glide frame included); null before it is placed or after a move threw.
+    private Rectangle? _current;
+    private MiniGlide? _glide;
     private int _recoveries;
     private DateTimeOffset? _lastFailureAt;
     private bool _attached;
@@ -95,9 +106,10 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
 
     public MiniSceneWindowController(
         Func<IMiniSceneSurface> surfaceFactory, IMiniSceneBrowser browser, Action<string>? trace = null,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null, IFrameSource? frames = null)
     {
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        _frames = frames;
         _surfaceFactory = surfaceFactory;
         _browser = browser;
         _trace = trace;
@@ -107,9 +119,16 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
 
     public bool IsReady => _attached && !_disposed;
 
-    /// <summary>The real window and WebView2 (its own <c>WebView2Mini</c> user-data folder). Construct on the UI STA.</summary>
+    /// <summary>How long a <see cref="GlideTo"/> takes: short enough to never feel sluggish.</summary>
+    public static readonly TimeSpan GlideDuration = TimeSpan.FromMilliseconds(220);
+
+    /// <summary>
+    /// The real window and WebView2 (its own <c>WebView2Mini</c> user-data folder), gliding on WPF render
+    /// frames. Construct on the UI STA.
+    /// </summary>
     public static MiniSceneWindowController CreateProduction(Action<string>? trace = null) =>
-        new(() => new Win32MiniSceneWindow(), new WebView2MiniSceneBrowser(), trace);
+        new(() => new Win32MiniSceneWindow(), new WebView2MiniSceneBrowser(), trace,
+            frames: new CompositionTargetFrameSource());
 
     /// <summary>
     /// The page viewport for a window of <paramref name="bounds"/>: origin at zero and SQUARE (the
@@ -153,6 +172,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
             return false;
         }
 
+        _current = bounds;
+
         // Still usable, but other topmost windows coming to the foreground can then cover it.
         if (!surface.ReassertsTopmost) _trace?.Invoke("mini-window: foreground hook unavailable");
         _ = AttachAsync(surface);
@@ -174,11 +195,31 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     {
         CheckAccess();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _surface?.Place(bounds);
+        StopGlide();
+        _current = null; // unknown until Place returns: a throwing Place may have moved the window
+        if (_surface is null) return;
+        _surface.Place(bounds);
+        _current = bounds;
         var viewport = ViewportFor(bounds);
         if (viewport == _viewport) return;
         _viewport = viewport;
         if (_attached) _browser.Resize(viewport);
+    }
+
+    public void GlideTo(Rectangle bounds)
+    {
+        CheckAccess();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_frames is null || _surface is null || _current is not { } current || current == bounds)
+        {
+            MoveTo(bounds);
+            return;
+        }
+
+        // Retargeting starts from the bounds last placed, so the window never jumps back or ahead.
+        var running = _glide is not null;
+        _glide = new MiniGlide(current, bounds, _clock(), GlideDuration);
+        if (!running) _frames.Start(OnFrame);
     }
 
     public void ShowAlert(AlertShowRequest request)
@@ -204,6 +245,7 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     {
         CheckAccess();
         if (_disposed) return;
+        StopGlide();
         _disposed = true;
         _browser.Ready -= OnReady;
         _browser.Failed -= OnFailed;
@@ -255,6 +297,55 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         _recoveries++;
         _trace?.Invoke($"mini-window: recovering attempt={_recoveries}");
         _ = AttachAsync(surface);
+    }
+
+    /// <summary>
+    /// One glide frame: places the interpolated bounds (no viewport resize), and on the last frame lands on
+    /// the target through <see cref="MoveTo"/>, which resizes the viewport once if the size changed. Runs
+    /// inside the dispatcher, so nothing escapes: a failure is traced and the window is put on the target.
+    /// </summary>
+    private void OnFrame()
+    {
+        if (_disposed || _glide is not { } glide || _surface is not { } surface)
+        {
+            StopGlide();
+            return;
+        }
+
+        try
+        {
+            var now = _clock();
+            if (glide.IsComplete(now))
+            {
+                MoveTo(glide.To);
+                return;
+            }
+
+            var bounds = glide.At(now);
+            _current = null;
+            surface.Place(bounds);
+            _current = bounds;
+        }
+        catch (Exception ex)
+        {
+            _trace?.Invoke($"mini-window: glide-frame-failed error={ex.GetType().Name}");
+            try
+            {
+                MoveTo(glide.To);
+            }
+            catch (Exception retry)
+            {
+                StopGlide();
+                _trace?.Invoke($"mini-window: glide-land-failed error={retry.GetType().Name}");
+            }
+        }
+    }
+
+    private void StopGlide()
+    {
+        if (_glide is null) return;
+        _glide = null;
+        _frames?.Stop();
     }
 
     private void NavigateToScene()

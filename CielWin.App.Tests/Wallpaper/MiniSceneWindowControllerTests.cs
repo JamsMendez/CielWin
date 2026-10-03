@@ -68,7 +68,25 @@ public sealed class MiniSceneWindowControllerTests
         public void RaiseFailed(string reason) => Failed?.Invoke(reason);
     }
 
+    /// <summary>A frame source the test drives by hand, one <see cref="Frame"/> per vsync.</summary>
+    private sealed class FakeFrames : IFrameSource
+    {
+        private Action? _onFrame;
+        public bool Running => _onFrame is not null;
+        public int StartCalls;
+
+        public void Start(Action onFrame)
+        {
+            StartCalls++;
+            _onFrame = onFrame;
+        }
+
+        public void Stop() => _onFrame = null;
+        public void Frame() => _onFrame?.Invoke();
+    }
+
     private readonly List<string> _trace = [];
+    private readonly FakeFrames _frames = new();
 
     private DateTimeOffset _now = new(2026, 9, 30, 12, 0, 0, TimeSpan.Zero);
 
@@ -76,7 +94,7 @@ public sealed class MiniSceneWindowControllerTests
     {
         var surface = new FakeSurface();
         var browser = new FakeBrowser();
-        return (new MiniSceneWindowController(() => surface, browser, _trace.Add, () => _now), surface, browser);
+        return (new MiniSceneWindowController(() => surface, browser, _trace.Add, () => _now, _frames), surface, browser);
     }
 
     /// <summary>Fails the browser and completes the recovery attach, if one was started.</summary>
@@ -494,5 +512,177 @@ public sealed class MiniSceneWindowControllerTests
         browser.RaiseFailed("process-failed");
 
         Assert.Equal(1, browser.AttachCalls);
+    }
+
+    private static readonly InteropRectangle Far = InteropRectangle.FromSize(1272, 1000, 288, 288);
+
+    /// <summary>Shown at <see cref="Corner"/>, attached, with the show placement cleared.</summary>
+    private (MiniSceneWindowController Controller, FakeSurface Surface, FakeBrowser Browser) Attached()
+    {
+        var (controller, surface, browser) = Create();
+        controller.Show(WallpaperScene.Processing, Corner);
+        browser.AttachResult.SetResult(true);
+        surface.Placed.Clear();
+        return (controller, surface, browser);
+    }
+
+    private void Advance(int milliseconds) => _now += TimeSpan.FromMilliseconds(milliseconds);
+
+    [Fact]
+    public void GlideToPlacesEaseOutBoundsOnEachFrameAndLandsExactlyOnTheTarget()
+    {
+        var (controller, surface, _) = Attached();
+
+        controller.GlideTo(Far);
+        Assert.Empty(surface.Placed);
+        Assert.True(_frames.Running);
+
+        Advance(110);
+        _frames.Frame();
+        var glide = new MiniGlide(Corner, Far, _now - TimeSpan.FromMilliseconds(110), MiniSceneWindowController.GlideDuration);
+        Assert.Equal(glide.At(_now), surface.Placed[^1]);
+        Assert.NotEqual(Far, surface.Placed[^1]);
+
+        Advance(110);
+        _frames.Frame();
+
+        Assert.Equal(Far, surface.Placed[^1]);
+        Assert.False(_frames.Running);
+    }
+
+    [Fact]
+    public void AGlideResizesTheBrowserOnceAtTheEndNeverPerFrame()
+    {
+        var (controller, _, browser) = Attached();
+        var bigger = InteropRectangle.FromSize(1000, 900, 360, 360);
+
+        controller.GlideTo(bigger);
+        for (var i = 0; i < 5; i++)
+        {
+            Advance(45); // the fifth frame (225 ms) is past the 220 ms glide
+            _frames.Frame();
+            if (i < 4) Assert.Empty(browser.Resizes);
+        }
+
+        Assert.Equal([new DrawingRectangle(0, 0, 360, 360)], browser.Resizes);
+    }
+
+    [Fact]
+    public void AnInstantMoveCancelsARunningGlide()
+    {
+        var (controller, surface, _) = Attached();
+        controller.GlideTo(Far);
+        Advance(50);
+        _frames.Frame();
+
+        controller.MoveTo(Corner);
+        Assert.False(_frames.Running);
+        Advance(50);
+        _frames.Frame();
+
+        Assert.Equal(Corner, surface.Placed[^1]);
+    }
+
+    [Fact]
+    public void ANewGlideMidFlightRetargetsFromTheCurrentAnimatedBounds()
+    {
+        var (controller, surface, _) = Attached();
+        var other = InteropRectangle.FromSize(0, 1000, 288, 288);
+        controller.GlideTo(Far);
+        Advance(100);
+        _frames.Frame();
+        var current = surface.Placed[^1];
+
+        controller.GlideTo(other);
+        Advance(20);
+        _frames.Frame();
+
+        var retarget = new MiniGlide(current, other, _now - TimeSpan.FromMilliseconds(20), MiniSceneWindowController.GlideDuration);
+        Assert.Equal(retarget.At(_now), surface.Placed[^1]);
+        Advance(1000);
+        _frames.Frame();
+        Assert.Equal(other, surface.Placed[^1]);
+        Assert.False(_frames.Running);
+    }
+
+    [Fact]
+    public void GlideToWithNoKnownBoundsPlacesInstantly()
+    {
+        var surface = new ThrowingOnceSurface();
+        var browser = new FakeBrowser();
+        var controller = new MiniSceneWindowController(() => surface, browser, _trace.Add, () => _now, _frames);
+        controller.Show(WallpaperScene.Processing, Corner);
+        browser.AttachResult.SetResult(true);
+        // A move that throws may already have moved the native window: its bounds are unknown now.
+        surface.ThrowNext = true;
+        Assert.Throws<InvalidOperationException>(() => controller.MoveTo(Corner));
+
+        controller.GlideTo(Far);
+
+        Assert.False(_frames.Running);
+        Assert.Equal(Far, surface.Placed[^1]);
+    }
+
+    [Fact]
+    public void DisposeStopsARunningGlide()
+    {
+        var (controller, surface, _) = Attached();
+        controller.GlideTo(Far);
+
+        controller.Dispose();
+        var placed = surface.Placed.Count;
+        Advance(100);
+        _frames.Frame();
+
+        Assert.False(_frames.Running);
+        Assert.Equal(placed, surface.Placed.Count);
+    }
+
+    [Fact]
+    public void AFrameThatThrowsIsTracedByTypeAndFinishesAtTheTarget()
+    {
+        var surface = new ThrowingOnceSurface();
+        var browser = new FakeBrowser();
+        var controller = new MiniSceneWindowController(() => surface, browser, _trace.Add, () => _now, _frames);
+        controller.Show(WallpaperScene.Processing, Corner);
+        browser.AttachResult.SetResult(true);
+        controller.GlideTo(Far);
+        surface.ThrowNext = true;
+
+        Advance(50);
+        var error = Record.Exception(_frames.Frame);
+
+        Assert.Null(error);
+        Assert.Contains("mini-window: glide-frame-failed error=InvalidOperationException", _trace);
+        Assert.Equal(Far, surface.Placed[^1]);
+        Assert.False(_frames.Running);
+    }
+
+    private sealed class ThrowingOnceSurface : IMiniSceneSurface
+    {
+        public bool ThrowNext;
+        public List<InteropRectangle> Placed { get; } = [];
+        public nint Hwnd => 42;
+        public bool IsCompositionReady => true;
+        public int CompositionGeneration => 1;
+        public bool ReassertsTopmost => true;
+        public bool TryCreate(InteropRectangle bounds) => true;
+
+        public bool Place(InteropRectangle bounds)
+        {
+            if (ThrowNext)
+            {
+                ThrowNext = false;
+                throw new InvalidOperationException("place failed");
+            }
+
+            Placed.Add(bounds);
+            return true;
+        }
+
+        public object? AddCompositionOverlayVisual() => new object();
+        public void RemoveCompositionOverlayVisual() { }
+        public void CommitComposition() { }
+        public void Dispose() { }
     }
 }

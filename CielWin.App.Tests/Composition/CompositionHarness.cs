@@ -258,6 +258,7 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
     public List<(WallpaperScene Scene, Rectangle Bounds)> Shows { get; } = [];
     public List<WallpaperScene> Switches { get; } = [];
     public List<Rectangle> Moves { get; } = [];
+    public List<Rectangle> Glides { get; } = [];
     public List<AlertShowRequest> Alerts { get; } = [];
     public int Hides { get; private set; }
     public int DisposeCalls { get; private set; }
@@ -280,10 +281,16 @@ internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWin
         return SwitchResult;
     }
 
-    public void MoveTo(Rectangle bounds)
+    public void MoveTo(Rectangle bounds) => Move(bounds, glide: false);
+
+    public void GlideTo(Rectangle bounds) => Move(bounds, glide: true);
+
+    /// <summary>Instant moves and glides both land in <see cref="Moves"/>; glides also in <see cref="Glides"/>.</summary>
+    private void Move(Rectangle bounds, bool glide)
     {
         if (ThrowOnMove) throw new InvalidOperationException("move failed");
         Moves.Add(bounds);
+        if (glide) Glides.Add(bounds);
         if (ThrowAfterMove) throw new InvalidOperationException("move failed after moving");
     }
 
