@@ -48,6 +48,13 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
       failing, fallback choice 3 failing. GREEN: App.Tests 614/614, Interop.Tests 210 passed / 22 skipped;
       opt-in real-hook lifecycle facts (`CIELWIN_RUN_DESKTOP_TESTS=1`) passed. Commit `c4be138`.
       Pending: the user's manual re-check with the real app (Alacritty->WSL `cat -v`, Alt tap menu, AltGr).
+- [x] G3 Hook review advisories. Route: delegated (writer). (a) Stale down-state: `KeyboardChordMatcher.OnKey` takes
+      the event time (`KBDLLHOOKSTRUCT.time`); a down of a key believed down is a repeat only within
+      `StaleThresholdMs` = 1500 ms of that key's last event (unsigned subtraction, wrap-safe), otherwise the stale
+      down/swallowing state is dropped and the down is fresh. (b) HookProc mapping: pure
+      `HandleHookEvent(message, vkCode, time, ModifierSnapshot)` + `ModifierSnapshot.ToHotkeyModifiers`; HookProc
+      keeps only the native reads + `CallNextHookEx`. RED: 15 failing (3 stale/wrap matcher, 12 hook mapping).
+      GREEN: `dotnet build` 0 warnings; Interop.Tests 233 passed / 22 skipped; App.Tests 614/614. Commit `49e1d58`.
 
 ## Acceptance
 
@@ -59,7 +66,7 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
 
 - RDD for a314ee6..e1618a1: medium, granted, 1-lens approved and acknowledged (lineage `review-d4b6fdb2313d203b`).
   Advisories (non-blocking follow-ups): stale key-down state if a key-up is missed (secure desktop / hook
-  removed) costs one keystroke; HookProc native mapping has no automated test.
+  removed) costs one keystroke; HookProc native mapping has no automated test. Both addressed in G3.
 - G1, G1b, G2 done (commits recorded above). Next: user's manual check of the glide and of Alt+M in the real
   app; then RDD assessment for `a314ee6..c4be138` and delivery under repository policy.
 - 2026-10-02 manual check by the user on the fresh Release build: glide looks good; Alacritty->WSL `cat -v` stays empty
