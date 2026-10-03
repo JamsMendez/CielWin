@@ -6,8 +6,11 @@ namespace CielWin.App.Input;
 /// <summary>
 /// The two global chords that walk the mini window around the work area: Alt+M clockwise
 /// (<see cref="MiniWindowPlacement.Next"/>), Alt+Shift+M counter-clockwise
-/// (<see cref="MiniWindowPlacement.Previous"/>). Registered through <c>RegisterHotKey</c>, so no
-/// keyboard hook and no elevation; auto-repeat is off so a held chord moves once.
+/// (<see cref="MiniWindowPlacement.Previous"/>). Registered on a low-level keyboard hook that swallows
+/// the whole chord -- down, auto-repeats and up -- so the M never reaches the focused app (falling back
+/// to <c>RegisterHotKey</c>, which lets the key up leak, when the hook cannot be installed). No
+/// elevation; the modifiers must match exactly (Ctrl+Alt, i.e. AltGr, never fires); auto-repeat is off
+/// so a held chord moves once.
 /// </summary>
 public static class MiniPositionHotkeys
 {

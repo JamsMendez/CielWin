@@ -108,7 +108,8 @@ public sealed class AppComposition : IDisposable
         try
         {
             _hotkeys = _host.CreateHotkeys();
-            // WM_HOTKEY arrives as a raw window message: posted for the same reason as tray clicks.
+            // Pressed arrives off the dispatcher (the keyboard hook's own thread, or a raw WM_HOTKEY
+            // window message in the fallback): posted for the same reason as tray clicks.
             _hotkeys.Pressed += id => _host.OnUiThread(() => OnHotkey(id));
             Register(MiniPositionHotkeys.ClockwiseId, MiniPositionHotkeys.ClockwiseModifiers, "alt+m");
             Register(MiniPositionHotkeys.CounterClockwiseId, MiniPositionHotkeys.CounterClockwiseModifiers, "alt+shift+m");
