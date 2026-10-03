@@ -35,7 +35,11 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
       `review-dd30578e4cd4461f`, authority burned).
 - [ ] G1b Review advisories (in scope): (a) a glide land failure leaves `MiniSceneSurface._placed` at the target, so
       ticks never re-place a window stuck mid-glide; (b) `Show`/`Hide` do not stop a running glide.
-- [ ] G2 Alt+M leak (pending user decision on a WH_KEYBOARD_LL hook replacing RegisterHotKey).
+- [ ] G2 Alt+M leak: replace RegisterHotKey for the two chords with a WH_KEYBOARD_LL hook on a dedicated thread
+      (swallow M down/repeats/up on a fresh M down with Alt held and no Ctrl/Win; VK 0xE8 mask against Alt-menu).
+      Prototype evidence: injected self-test identical to baseline for plain m, Ctrl+Alt+M, Alt tap menu, M-then-Alt;
+      Alt+M no longer reaches the window. User manual test in Alacritty->WSL `cat -v`: nothing typed (40 chords
+      swallowed). Awaiting go-ahead to implement in CielWin.
 
 ## Acceptance
 
