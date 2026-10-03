@@ -57,5 +57,8 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
 
 ## Progress
 
+- RDD for a314ee6..e1618a1: medium, granted, 1-lens approved and acknowledged (lineage `review-d4b6fdb2313d203b`).
+  Advisories (non-blocking follow-ups): stale key-down state if a key-up is missed (secure desktop / hook
+  removed) costs one keystroke; HookProc native mapping has no automated test.
 - G1, G1b, G2 done (commits recorded above). Next: user's manual check of the glide and of Alt+M in the real
   app; then RDD assessment for `a314ee6..c4be138` and delivery under repository policy.
