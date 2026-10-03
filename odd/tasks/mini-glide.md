@@ -31,6 +31,10 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
       tests = 2+ non-trivial files). `MiniGlide` (pure math) + `IFrameSource` seam over
       `CompositionTarget.Rendering`; `IMiniSceneWindow.GlideTo`. RED observed (11 failing), GREEN: writer full run
       606/606; parent spot check 69/69 (glide/controller/wiring filter). Pending: manual check in the running app.
+      Commit `0a04654`. RDD: medium, granted, 1-lens review approved and acknowledged (lineage
+      `review-dd30578e4cd4461f`, authority burned).
+- [ ] G1b Review advisories (in scope): (a) a glide land failure leaves `MiniSceneSurface._placed` at the target, so
+      ticks never re-place a window stuck mid-glide; (b) `Show`/`Hide` do not stop a running glide.
 - [ ] G2 Alt+M leak (pending user decision on a WH_KEYBOARD_LL hook replacing RegisterHotKey).
 
 ## Acceptance
