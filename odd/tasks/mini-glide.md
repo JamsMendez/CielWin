@@ -71,3 +71,4 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
   app; then RDD assessment for `a314ee6..c4be138` and delivery under repository policy.
 - 2026-10-02 manual check by the user on the fresh Release build: glide looks good; Alacritty->WSL `cat -v` stays empty
   on Alt+M / Alt+Shift+M (tap and hold); plain m, AltGr and Alt menu fine. Feature complete; push/PR are the user's call.
+- 2026-10-02 merged into `main` (`69e0573`, --no-ff), branch deleted, released as `v1.2.0`.
