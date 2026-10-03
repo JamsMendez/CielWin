@@ -62,3 +62,5 @@ The jump is abrupt; a short glide shows where the window went. It must stay fast
   removed) costs one keystroke; HookProc native mapping has no automated test.
 - G1, G1b, G2 done (commits recorded above). Next: user's manual check of the glide and of Alt+M in the real
   app; then RDD assessment for `a314ee6..c4be138` and delivery under repository policy.
+- 2026-10-02 manual check by the user on the fresh Release build: glide looks good; Alacritty->WSL `cat -v` stays empty
+  on Alt+M / Alt+Shift+M (tap and hold); plain m, AltGr and Alt menu fine. Feature complete; push/PR are the user's call.
