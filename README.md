@@ -92,7 +92,9 @@ Mode, scene and sound changes are saved to the settings file.
 
 No sound ships with CielWin: alerts are silent until you import one. Each kind plays only its own
 sound (an alert with any failed tile plays the failed sound); a kind without a sound stays silent.
-A missing or unplayable sound file is skipped and noted in the trace log.
+A missing or unplayable sound file is skipped and noted in the trace log. An alert plays its sound once,
+when it first shows; a held warning is the one exception: it repeats every 5 seconds while it shows
+(see *Held warning*).
 
 ## Hotkeys
 
@@ -248,6 +250,10 @@ for an answer. It is accepted with `warning` only; with any `failed` the answer 
   ends, for the rest of its hold, with the same id and without replaying its sound, however many
   times it is preempted. One preempted before it ever showed plays its sound when it first shows.
   If it was cleared or passed its hold max meanwhile, it does not come back.
+- While a held warning shows, its warning sound (when alert sounds are on and a warning sound is
+  imported) plays again every 5 seconds until it is cleared or its hold max passes. It does not
+  repeat while suspended, waiting or covered by a fullscreen window; once it shows again, the next
+  repeat comes 5 seconds later. Timed alerts play their sound once.
 - A warning while a held warning shows is ignored as usual. A held warning sent while a timed alert
   shows waits and starts when that one ends.
 - At most one held warning exists at a time: a held warning sent while another one shows, waits or

@@ -187,6 +187,24 @@ public sealed class AlertDriverSoundTests
         Assert.Empty(_sounds.Played);
     }
 
+    [Theory]
+    [InlineData(5, 1)]
+    [InlineData(6, 2)]
+    public void H4_TheHeldWarningRepeat_UsesTheTicksOwnClockReads(int updates, int sounds)
+    {
+        // Every clock read moves one second (the accept takes one): shown on the second read of the
+        // first update, the first repeat is due on the sixth update.
+        var driver = Create(new SteppingClock(TimeSpan.FromSeconds(1)));
+        driver.Accept("warning:1 duration:0");
+        for (var update = 0; update < updates; update++)
+        {
+            driver.Update(_surface, primaryMonitorCovered: false);
+        }
+
+        Assert.Equal([598000], _surface.Shows.Select(show => show.DurationMilliseconds));
+        Assert.Equal(sounds, _sounds.Played.Count);
+    }
+
     private sealed class SteppingClock(TimeSpan step) : TimeProvider
     {
         private DateTimeOffset _now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
