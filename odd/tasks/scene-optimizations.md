@@ -35,6 +35,8 @@ measurement, so GPU-bound wins are unproven on WebView2.
 - [x] S1 NEB-1 + earth fast path + cached gradients. Route: delegated (writer: 4+ scene files + tests).
   Commit: `27dbc31`. Surface widened (user-approved) to `idle/js/rings.js` and
   `explorer/js/rising-sparks.js` (CieLinux keeps the idle vignette and blue-layer glow there, not in `animate.js`).
+- [x] S1b Review advisories on S1. Route: delegated (writer: 2 rings.js + 2 scene test files + render-loop comment).
+  Commit: `6901667`.
 - [x] S2 Windows baseline measurement (draws/s, CPU). Route: delegated (measurement worker).
 - [x] S3 30/60 FPS setting + tray. Route: delegated (writer: settings + seams + tray + composition + tests).
   Commit: `6e7e772`. Surface widened (user-approved) to `Wallpaper/MiniSceneWindowController.cs` (the mini builds
@@ -65,6 +67,23 @@ measurement, so GPU-bound wins are unproven on WebView2.
   - Deviation: the earth reference runs in the same vm realm (one load; the earth.js bake costs ~7 s per realm)
     instead of CieLinux's second stripped-copy harness. CielWin had no source hash pins, so nothing was re-pinned.
 
+- S1b done (review advisories on S1):
+  - Vignette (explorer + idle `rings.js`): the cached path now builds the gradient before `context.save()`, so a
+    throwing `createRadialGradient` no longer leaves a dangling save that grows the state stack every failing frame.
+    Same calls and fills on success; the edit stays inside the S1 block (pre-S1 pins unchanged). CieLinux `4574b4a`
+    `scenes/explorer/js/rings.js:779-780` has the same save-before-gradient ordering (not fixed there; read-only).
+  - Pins: the pre-S1 SHA-256 pins now hash LF-normalized text (`\r\n` -> `\n` before stripping) and were re-pinned;
+    they equal `git show 7ecdc79:<file> | tr -d '\r' | sha256sum`, and an LF and a CRLF copy hash the same.
+  - Earth fallback: new test re-evaluates the S1 `renderEarthFrame` with `EARTH_EQUIRECT_GRAY = null` or
+    `EARTH_LITTLE_ENDIAN = false` shadowed, compares bytes to the pre-S1 reference (sizes 64/109/33 x 3 longitudes)
+    and checks the fast path is never entered; it shares one page with the earth/vignette tests (no extra bake).
+  - `shared/js/render-loop.js` comment now points at `SceneUrl(scene, variant, fps)` and the `frame-rate` setting.
+  - RED: explorer 28/30 (pins `js/earth.js` with normalized pins on raw text; vignette "1 saves, 0 restores");
+    idle vignette "1 saves, 0 restores" (run against a scratch copy with the HEAD rings.js). The fallback test is a
+    characterization test (passes on S1 code).
+  - GREEN: explorer 30/30, idle 28/28. `dotnet build CielWin.sln` 0 warnings / 0 errors;
+    `dotnet test CielWin.sln`: Interop 269 passed / 22 skipped, App 716 passed / 0 failed.
+
 - S3 done: `frame-rate` setting (`30`|`60`, default `60`, anything else keeps the default / an earlier valid
   value), serialized with a comment after `scene`; `Settings.FrameRates`/`IsFrameRate`. `SceneUrl(scene, variant,
   fps)` carries it (only 30/60 reach the URL, else 60); the wallpaper layer (`WebViewAlertLayerController`) and the
@@ -81,6 +100,6 @@ measurement, so GPU-bound wins are unproven on WebView2.
   - Deviations from CieLinux `bf213ae`: default 60 (CieLinux 30) to keep CielWin's cadence and appearance (user
     decision); persisted immediately, following CielWin's mode-switch path, not after the new page reports ready
     (user decision); no submenu glyph (Mode/Scene have one). Not touched (outside surface): the stale
-    `Settings.cs TryReadWallpaperFps` reference lives in `Wallpaper/Web/shared/js/render-loop.js:66`, not the host.
+    `Settings.cs TryReadWallpaperFps` reference lives in `Wallpaper/Web/shared/js/render-loop.js:66`, not the host (fixed in S1b).
 
 Next: S4 stays gated on user visual approval.
