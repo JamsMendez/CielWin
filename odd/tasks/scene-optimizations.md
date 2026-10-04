@@ -33,7 +33,7 @@ measurement, so GPU-bound wins are unproven on WebView2.
 ## Tasks
 
 - [x] S1 NEB-1 + earth fast path + cached gradients. Route: delegated (writer: 4+ scene files + tests).
-  Commit: HASH_PLACEHOLDER. Surface widened (user-approved) to `idle/js/rings.js` and
+  Commit: `27dbc31`. Surface widened (user-approved) to `idle/js/rings.js` and
   `explorer/js/rising-sparks.js` (CieLinux keeps the idle vignette and blue-layer glow there, not in `animate.js`).
 - [x] S2 Windows baseline measurement (draws/s, CPU). Route: delegated (measurement worker).
 - [ ] S3 30/60 FPS setting + tray. Route: delegated (writer).
