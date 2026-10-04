@@ -247,6 +247,31 @@ public sealed class SettingsTests
     }
 
     [Fact]
+    public void AlertHoldMaxSeconds_DefaultsToTenMinutes() =>
+        Assert.Equal(600, Settings.Parse(string.Empty).AlertHoldMaxSeconds);
+
+    [Theory]
+    [InlineData("alert-hold-max-seconds = 10", 10)]
+    [InlineData("alert-hold-max-seconds=3600", 3600)]
+    [InlineData("  ALERT-HOLD-MAX-SECONDS  =  90 ", 90)]
+    public void AlertHoldMaxSecondsIsRead_HoweverTheLineIsSpelled(string line, int expected)
+    {
+        Assert.Equal(expected, Settings.Parse(line).AlertHoldMaxSeconds);
+    }
+
+    [Theory]
+    [InlineData("alert-hold-max-seconds = 9")]
+    [InlineData("alert-hold-max-seconds = 3601")]
+    [InlineData("alert-hold-max-seconds = -60")]
+    [InlineData("alert-hold-max-seconds = 1.5")]
+    [InlineData("alert-hold-max-seconds = 10m")]
+    [InlineData("alert-hold-max-seconds =")]
+    public void AnInvalidAlertHoldMaxSeconds_KeepsTheDefault(string line)
+    {
+        Assert.Equal(600, Settings.Parse(line).AlertHoldMaxSeconds);
+    }
+
+    [Fact]
     public void LegacyAlertHttpKeys_AreStillRead_ButTheNewKeysWinInEitherOrder()
     {
         var legacy = Settings.Parse("alert-http = off\nalert-http-port = 9000\n");
@@ -388,7 +413,8 @@ public sealed class SettingsTests
             WallpaperMode: WallpaperMode.SceneMini,
             WallpaperScene: WallpaperScene.Raphael,
             MiniPosition: MiniPosition.LeftCenter,
-            AlertSoundsEnabled: false);
+            AlertSoundsEnabled: false,
+            AlertHoldMaxSeconds: 90);
 
         Assert.Equal(original, Settings.Parse(original.Serialize()));
     }
@@ -427,7 +453,7 @@ public sealed class SettingsTests
             .Select(line => line[..line.IndexOf('=')].Trim())
             .ToArray();
 
-        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position", "alert-sounds", "failed-sound", "warning-sound"], keys);
+        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position", "alert-sounds", "failed-sound", "warning-sound", "alert-hold-max-seconds"], keys);
         Assert.StartsWith("# CielWin settings", text, StringComparison.Ordinal);
         Assert.DoesNotContain("CosmicWin", text, StringComparison.Ordinal);
         Assert.DoesNotContain("wallpaper-scene", text, StringComparison.Ordinal);

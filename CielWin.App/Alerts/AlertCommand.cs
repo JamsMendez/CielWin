@@ -5,12 +5,19 @@ public sealed record AlertGroup(AlertKind Kind, int Count);
 
 /// <summary>
 /// A successfully parsed alert command: the tile groups in command order, plus how long
-/// they stay on screen.
+/// they stay on screen. A zero <see cref="Duration"/> is a held warning: it stays until it is cleared
+/// (or the queue's hold max runs out), and only a warning-only command can be held.
 /// </summary>
 public sealed record AlertCommand(IReadOnlyList<AlertGroup> Groups, TimeSpan Duration)
 {
     /// <summary>The number of tiles this command asks for, summed across every group.</summary>
     public int TotalTiles => Groups.Sum(group => group.Count);
+
+    /// <summary>Whether this is a held warning (<c>duration:0</c>), shown until cleared.</summary>
+    public bool IsHeld => Duration == TimeSpan.Zero;
+
+    /// <summary>Whether any group is a failed one.</summary>
+    public bool HasFailed => Groups.Any(group => group.Kind == AlertKind.Failed);
 }
 
 /// <summary>

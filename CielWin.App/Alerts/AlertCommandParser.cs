@@ -12,7 +12,8 @@ namespace CielWin.App.Alerts;
 /// tokens, <c>kind</c> one of <c>warning</c> / <c>failed</c> (case-insensitive), <c>count</c> a
 /// plain decimal integer 1..16, each key written at most once, plus an optional
 /// <c>duration:seconds</c> token (1..60, default 5). At least one <c>warning</c>/<c>failed</c>
-/// group is required, and the tile counts must not sum past 16.
+/// group is required, and the tile counts must not sum past 16. <c>duration:0</c> holds the alert
+/// until it is cleared and is accepted only without any <c>failed</c> group.
 /// </para>
 /// <para>
 /// Deliberately never throws. The input reaches this parser from outside the process, over the
@@ -93,7 +94,8 @@ public static class AlertCommandParser
 
             if (isDuration)
             {
-                if (number is < MinDurationSeconds or > MaxDurationSeconds)
+                // 0 holds the alert until cleared (checked against the kinds below).
+                if (number != 0 && number is < MinDurationSeconds or > MaxDurationSeconds)
                 {
                     return AlertCommandParseResult.Fail(
                         $"'{token}' must be {MinDurationSeconds}..{MaxDurationSeconds} seconds");
@@ -124,7 +126,15 @@ public static class AlertCommandParser
                 $"{totalTiles} tiles were requested, past the {MaxTotalTiles}-tile limit");
         }
 
-        return AlertCommandParseResult.Ok(new AlertCommand(groups, TimeSpan.FromSeconds(durationSeconds)));
+        var command = new AlertCommand(groups, TimeSpan.FromSeconds(durationSeconds));
+
+        // A failure has nothing to wait for: only a warning can be held.
+        if (command.IsHeld && command.HasFailed)
+        {
+            return AlertCommandParseResult.Fail("'duration:0' requires warning only");
+        }
+
+        return AlertCommandParseResult.Ok(command);
     }
 
     private static bool TryParseKind(string key, out AlertKind kind)

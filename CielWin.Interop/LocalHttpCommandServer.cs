@@ -6,11 +6,12 @@ using System.Text;
 namespace CielWin.Interop;
 
 /// <summary>
-/// A loopback-only <see cref="HttpListener"/> serving two independent routes behind the SAME security
+/// A loopback-only <see cref="HttpListener"/> serving independent routes behind the SAME security
 /// gates, port and bearer token: <see cref="AlertHttpProtocol.AlertsPath"/>, which hands an accepted
-/// body (translated to command text) to the alert handler, and
-/// <see cref="WallpaperSceneHttpProtocol.ScenePath"/>, which validates the body as a scene name and
-/// hands it to a separate switch delegate. Each route is independently enabled by whether its handler
+/// body (translated to command text) to the alert handler,
+/// <see cref="AlertHttpProtocol.AlertsClearPath"/>, which hands a validated clear id to the clear
+/// handler, and <see cref="WallpaperSceneHttpProtocol.ScenePath"/>, which validates the body as a
+/// scene name and hands it to a separate switch delegate. Each route is independently enabled by whether its handler
 /// delegate was supplied to the constructor: a route whose delegate is <see langword="null"/> is never
 /// in the routing table at all, so a request to it is rejected the exact same way (404, same body) as
 /// a request to a path that was never a route -- see <see cref="ResolveRoute"/>.
@@ -82,6 +83,7 @@ public sealed class LocalHttpCommandServer : IHttpCommandServer
     private readonly byte[] _tokenBytes;
     private readonly Func<string, string>? _handleCommand;
     private readonly Func<string, bool>? _handleWallpaperSceneSwitch;
+    private readonly Func<int?, string>? _handleAlertClear;
     private readonly Action<string> _onDiagnostic;
     private readonly IReadOnlyList<Route> _routes;
     private readonly CancellationTokenSource _stopping = new();
@@ -116,12 +118,20 @@ public sealed class LocalHttpCommandServer : IHttpCommandServer
     /// <paramref name="handleCommand"/>. <see langword="null"/> means the scene route is off: it
     /// answers exactly like an unknown path.
     /// </param>
+    /// <param name="handleAlertClear">
+    /// Called with the id from a <see cref="AlertHttpProtocol.AlertsClearPath"/> body that passed
+    /// <see cref="AlertHttpProtocol.TryParseClear"/> (<see langword="null"/>: the held warning); its
+    /// reply is answered like the alert handler's. A throw from it is caught and reported like a throw
+    /// from <paramref name="handleCommand"/>. <see langword="null"/> means the clear route is off: it
+    /// answers exactly like an unknown path.
+    /// </param>
     public LocalHttpCommandServer(
         int port,
         string token,
         Func<string, string>? handleCommand,
         Action<string>? onDiagnostic = null,
-        Func<string, bool>? handleWallpaperSceneSwitch = null)
+        Func<string, bool>? handleWallpaperSceneSwitch = null,
+        Func<int?, string>? handleAlertClear = null)
     {
         if (port is < 1 or > 65535)
         {
@@ -135,6 +145,7 @@ public sealed class LocalHttpCommandServer : IHttpCommandServer
         _tokenBytes = Encoding.UTF8.GetBytes(token);
         _handleCommand = handleCommand;
         _handleWallpaperSceneSwitch = handleWallpaperSceneSwitch;
+        _handleAlertClear = handleAlertClear;
         _onDiagnostic = onDiagnostic ?? (_ => { });
         _routes = BuildRoutes();
     }
@@ -150,6 +161,11 @@ public sealed class LocalHttpCommandServer : IHttpCommandServer
         if (_handleCommand is not null)
         {
             routes.Add(new Route(AlertHttpProtocol.AlertsPath, AlertHttpProtocol.MaxBodyBytes, HandleAlertBody));
+        }
+
+        if (_handleAlertClear is not null)
+        {
+            routes.Add(new Route(AlertHttpProtocol.AlertsClearPath, AlertHttpProtocol.ClearMaxBodyBytes, HandleAlertClearBody));
         }
 
         if (_handleWallpaperSceneSwitch is not null)
@@ -385,6 +401,32 @@ public sealed class LocalHttpCommandServer : IHttpCommandServer
         catch (Exception error)
         {
             _onDiagnostic($"alert http: the command handler threw {error.GetType().Name}: {error.Message}");
+            WriteReply(response, 500, AlertReplyProtocol.FormatError("internal error"));
+            return;
+        }
+
+        WriteReply(response, AlertHttpProtocol.StatusCodeFor(reply), reply);
+    }
+
+    /// <summary>Finishes gate 10/11 for <see cref="AlertHttpProtocol.AlertsClearPath"/>.</summary>
+    private void HandleAlertClearBody(string body, HttpListenerResponse response)
+    {
+        // 10. {} or { "id": n }.
+        if (!AlertHttpProtocol.TryParseClear(body, out var id, out var parseError))
+        {
+            Reject(response, 400, parseError!);
+            return;
+        }
+
+        // 11. Hand the id to the handler.
+        string reply;
+        try
+        {
+            reply = _handleAlertClear!(id);
+        }
+        catch (Exception error)
+        {
+            _onDiagnostic($"alert http: the alert clear handler threw {error.GetType().Name}: {error.Message}");
             WriteReply(response, 500, AlertReplyProtocol.FormatError("internal error"));
             return;
         }

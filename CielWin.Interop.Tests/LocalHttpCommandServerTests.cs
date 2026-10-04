@@ -699,6 +699,78 @@ public sealed class LocalHttpCommandServerTests(ITestOutputHelper output)
         Assert.StartsWith("error: ", responseBody);
     }
 
+    // ---- H1: the alerts clear route ----
+
+    [Fact]
+    public async Task ClearRoute_RunsTheSameGatesWithItsOwn64ByteCap_ThenHandsTheIdOver()
+    {
+        var received = new List<int?>();
+        using var server = StartWithClear(out var port, _ => "ok", id => { lock (received) { received.Add(id); } return "ok"; });
+
+        using var client = NewClient();
+        using (var get = await client.GetAsync($"http://127.0.0.1:{port}{AlertHttpProtocol.AlertsClearPath}"))
+        {
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, get.StatusCode);
+        }
+
+        using var anonymous = NewClientWithoutAuth();
+        using (var unauthorized = await anonymous.PostAsync(
+            $"http://127.0.0.1:{port}{AlertHttpProtocol.AlertsClearPath}", JsonContent("{}")))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        }
+
+        Assert.Equal((415, "error: content type must be application/json"), await PostClearAsync(port, "{}", "text/plain"));
+        Assert.Equal((413, "error: request body is too large"), await PostClearAsync(port, new string('x', 65)));
+        Assert.Equal((400, "error: body is not valid UTF-8"), await PostClearBytesAsync(port, [0xff]));
+        Assert.Equal((202, "ok"), await PostClearAsync(port, "{}".PadRight(64, ' ')));
+        Assert.Equal((202, "ok"), await PostClearAsync(port, "{\"id\":5}"));
+        Assert.Equal((400, "error: field 'id' must be a whole number >= 1"), await PostClearAsync(port, "{\"id\":0}"));
+        Assert.Equal((400, "error: unknown field 'warning'"), await PostClearAsync(port, "{\"warning\":1}"));
+        Assert.Equal((400, "error: body is not valid JSON"), await PostClearAsync(port, "not json"));
+
+        using (var nested = await client.PostAsync(
+            $"http://127.0.0.1:{port}{AlertHttpProtocol.AlertsClearPath}/x", JsonContent("{}")))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, nested.StatusCode);
+        }
+
+        lock (received)
+        {
+            Assert.Equal([null, 5], received);
+        }
+    }
+
+    [Fact]
+    public async Task ClearRouteDisabled_AnswersExactlyLikeAnUnknownPath()
+    {
+        using var server = Start(out var port, _ => "ok"); // handleAlertClear left null
+
+        using var client = NewClient();
+        var (unknownStatus, unknownBody) = await GetAgainstUnknownPath(client, port);
+        var (status, body) = await PostClearAsync(port, "{}");
+
+        Assert.Equal(404, status);
+        Assert.Equal(unknownStatus, status);
+        Assert.Equal(unknownBody, body);
+    }
+
+    [Fact]
+    public async Task ClearRoute_AThrowingHandler_Answers500()
+    {
+        using var server = StartWithClear(out var port, _ => "ok", _ => throw new InvalidOperationException("boom"));
+
+        Assert.Equal((500, "error: internal error"), await PostClearAsync(port, "{}"));
+    }
+
+    [Fact]
+    public async Task AlertRoute_AnAcceptedReplyWithItsId_Answers202WithThatBody()
+    {
+        using var server = Start(out var port, _ => "ok id=3");
+
+        Assert.Equal((202, "ok id=3"), await PostAsync(port, "{\"warning\":1,\"duration\":0}"));
+    }
+
     // ---- the removed video route ----
 
     [Fact]
@@ -1021,6 +1093,40 @@ public sealed class LocalHttpCommandServerTests(ITestOutputHelper output)
                 handleWallpaperSceneSwitch));
         port = bound;
         return server;
+    }
+
+    private LocalHttpCommandServer StartWithClear(
+        out int port, Func<string, string> handleCommand, Func<int?, string> handleAlertClear)
+    {
+        var (server, bound) = StartOnFreePort(
+            (candidate, sink) => new LocalHttpCommandServer(candidate, Token, handleCommand, sink,
+                handleAlertClear: handleAlertClear));
+        port = bound;
+        return server;
+    }
+
+    private static Task<(int Status, string Body)> PostClearAsync(int port, string body, string contentType = "application/json")
+    {
+        var content = new StringContent(body, Encoding.UTF8);
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        return PostClearContentAsync(port, content);
+    }
+
+    private static Task<(int Status, string Body)> PostClearBytesAsync(int port, byte[] body)
+    {
+        var content = new ByteArrayContent(body);
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json");
+        return PostClearContentAsync(port, content);
+    }
+
+    private static async Task<(int Status, string Body)> PostClearContentAsync(int port, HttpContent content)
+    {
+        using var client = NewClient();
+        using (content)
+        using (var response = await client.PostAsync($"http://127.0.0.1:{port}{AlertHttpProtocol.AlertsClearPath}", content))
+        {
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
     }
 
     private LocalHttpCommandServer StartSceneOnly(out int port, Func<string, bool> handleWallpaperSceneSwitch)

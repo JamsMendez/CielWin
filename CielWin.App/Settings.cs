@@ -64,6 +64,10 @@ public enum WallpaperScene
 /// <see cref="AlertSoundLibrary"/>'s folder, or <see langword="null"/> (the default) for silence.
 /// </param>
 /// <param name="WarningSound">The same for a warning alert (<c>warning-sound</c>).</param>
+/// <param name="AlertHoldMaxSeconds">
+/// How long a held warning (<c>duration: 0</c>) may stay up without being cleared, counted from its
+/// request (<c>alert-hold-max-seconds</c>), 10-3600, default 600. Hand-edited; read at start.
+/// </param>
 /// <remarks>
 /// A flat <c>key = value</c> text file a person is expected to edit. Blank lines and <c>#</c> comments
 /// are ignored, unknown keys (including every key CosmicWin had that CielWin dropped) are skipped,
@@ -81,7 +85,8 @@ public sealed record Settings(
     MiniPosition MiniPosition = MiniPosition.TopRight,
     bool AlertSoundsEnabled = true,
     string? FailedSound = null,
-    string? WarningSound = null)
+    string? WarningSound = null,
+    int AlertHoldMaxSeconds = 600)
 {
     public static Settings Default { get; } = new();
 
@@ -97,6 +102,7 @@ public sealed record Settings(
     private const string AlertSoundsKey = "alert-sounds";
     private const string FailedSoundKey = "failed-sound";
     private const string WarningSoundKey = "warning-sound";
+    private const string AlertHoldMaxSecondsKey = "alert-hold-max-seconds";
 
     /// <summary>Whether either kind has an imported sound (the tray hides the mute toggle otherwise).</summary>
     public bool HasAnySound => FailedSound is not null || WarningSound is not null;
@@ -155,6 +161,7 @@ public sealed record Settings(
         MiniPosition? miniPosition = null, legacyMiniPosition = null;
         var alertSounds = Default.AlertSoundsEnabled;
         string? failedSound = null, warningSound = null;
+        var alertHoldMaxSeconds = Default.AlertHoldMaxSeconds;
 
         foreach (var rawLine in content.Split('\n'))
         {
@@ -233,6 +240,9 @@ public sealed record Settings(
                 case WarningSoundKey:
                     warningSound = TryReadSound(value);
                     break;
+                case AlertHoldMaxSecondsKey:
+                    alertHoldMaxSeconds = TryReadHoldMaxSeconds(value) ?? alertHoldMaxSeconds;
+                    break;
             }
         }
 
@@ -244,7 +254,8 @@ public sealed record Settings(
             miniPosition ?? legacyMiniPosition ?? Default.MiniPosition,
             alertSounds,
             failedSound,
-            warningSound);
+            warningSound,
+            alertHoldMaxSeconds);
     }
 
     /// <summary>The file this instance would be written as, comment and all.</summary>
@@ -285,6 +296,10 @@ public sealed record Settings(
          {FailedSoundKey} = {FailedSound}
          {WarningSoundKey} = {WarningSound}
 
+         # {AlertHoldMaxSecondsKey}: how long a held warning (`duration: 0`) may stay up without being
+         # cleared, counted from its request, 10-3600 (default 600). Read at start.
+         {AlertHoldMaxSecondsKey} = {AlertHoldMaxSeconds.ToString(CultureInfo.InvariantCulture)}
+
          """;
 
     private static string NameOf<T>((string Name, T Value)[] names, T value) =>
@@ -322,6 +337,12 @@ public sealed record Settings(
     /// sound rather than keeping an earlier one: silence is the safe reading.
     /// </summary>
     private static string? TryReadSound(string value) => AlertSoundLibrary.IsSoundFileName(value) ? value : null;
+
+    /// <summary>Reads a hold max in seconds, 10-3600; anything else (or not a whole number) is <see langword="null"/>.</summary>
+    private static int? TryReadHoldMaxSeconds(string value) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) && seconds is >= 10 and <= 3600
+            ? seconds
+            : null;
 
     /// <summary>Reads a TCP port, 1-65535; anything else (or not a whole number) is <see langword="null"/>.</summary>
     private static int? TryReadPort(string value) =>
