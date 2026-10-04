@@ -57,5 +57,5 @@ H1 done (route: delegated writer).
 - Deviation from CieLinux: clear id is `null` (not `0`) for "the held warning".
 - H4 hook: `ActiveAlert.Id` is stable across re-show/resume, `StartedAt` resets on each show/resume, and
   `Command.IsHeld` marks a held warning; the driver sees a show/resume as the tick the displayed id changes.
-- Commit: COMMIT_PENDING
+- Commit: `2e247ae` feat(alerts): add held warnings with clear route
 - Next: H4.
