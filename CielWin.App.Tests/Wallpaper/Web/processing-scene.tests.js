@@ -27,6 +27,7 @@ const { URLSearchParams } = require("url");
 
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
+const blurFreeGlowChecks = require(path.join(__dirname, "blur-free-glow.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node processing-scene.tests.js <path-to-wallpaper-processing-directory>");
@@ -824,14 +825,17 @@ test("mini scales the processing structure's fixed px sizes by min(W,H)/1440 wit
   near(smallest.size, 1.5 * (0.90 + smallest.front * 0.74), "the smallest mini block keeps the 1.5px floor");
 
   // octagon: 6.8px / 5.1px strokes, 20px blur at rest
+  // S4a: the full variant bakes its glows on the first call (the bake canvases share this mock context, so
+  // that call records the bake's blurs) and draws later calls unshadowed from the warm cache: blurs are read
+  // on the first call, stroke widths on the second.
   var octagon = function (page) {
-    var widths = pxHistory(page, "__lineWidthHistory", function () { page.sandbox.drawCentralOctagon(144, 144, 0, 0); });
     var blurs = pxHistory(page, "__shadowBlurHistory", function () { page.sandbox.drawCentralOctagon(144, 144, 0, 0); });
+    var widths = pxHistory(page, "__lineWidthHistory", function () { page.sandbox.drawCentralOctagon(144, 144, 0, 0); });
     return { widths: widths, blurs: blurs };
   };
   var f = octagon(full);
   assert.deepStrictEqual(f.widths, [6.8, 6.8, 5.1], "the full octagon strokes must stay 6.8/6.8/5.1");
-  assert.deepStrictEqual(f.blurs, [20], "the full octagon blur must stay 20");
+  assert.strictEqual(f.blurs[0], 20, "the full octagon blur (baked at rest, S4a) must stay 20");
   // T2l: the mini octagon's line is exactly as thick as raphael's mini hexadecagon (MINI_POLYGON_STROKE_PX);
   // its chroma copies and glow keep their full-scene proportions to it, so the glow does not re-thicken it.
   var polygonPx = vm.runInContext("MINI_POLYGON_STROKE_PX", mini.sandbox);
@@ -851,13 +855,14 @@ test("mini scales the processing structure's fixed px sizes by min(W,H)/1440 wit
   // rays / core rays go through drawGlowSegments: 1.45px width, 6px blur
   var rays = function (page) {
     var segs = [[0, 0, 50, 50]];
-    return {
-      widths: pxHistory(page, "__lineWidthHistory", function () { page.sandbox.drawGlowSegments(segs, 1.45, 0.5, 6); }),
-      blurs: pxHistory(page, "__shadowBlurHistory", function () { page.sandbox.drawGlowSegments(segs, 1.45, 0.5, 6); }),
-    };
+    // S4a: blurs first (the full variant's cold call bakes the glow), widths from the warm cache.
+    var blurs = pxHistory(page, "__shadowBlurHistory", function () { page.sandbox.drawGlowSegments(segs, 1.45, 0.5, 6); });
+    var widths = pxHistory(page, "__lineWidthHistory", function () { page.sandbox.drawGlowSegments(segs, 1.45, 0.5, 6); });
+    return { widths: widths, blurs: blurs };
   };
-  assert.deepStrictEqual(rays(full).widths, [1.45]);
-  assert.deepStrictEqual(rays(full).blurs, [6]);
+  var fullRays = rays(full);
+  assert.deepStrictEqual(fullRays.widths, [1.45]);
+  assert.deepStrictEqual(fullRays.blurs, [6]);
   assert.strictEqual(rays(mini).widths[0], 0.5, "the mini ray width keeps the 0.5px floor");
   near(rays(mini).blurs[0], 6 * S, "mini ray blur");
 
@@ -865,7 +870,15 @@ test("mini scales the processing structure's fixed px sizes by min(W,H)/1440 wit
   var core = function (page) {
     return pxHistory(page, "__shadowBlurHistory", function () { page.sandbox.drawCentralCore(144, 144, 0); }).filter(function (v) { return v > 0; });
   };
-  assert.ok(core(full).indexOf(20) >= 0, "the full core blur must stay 20");
+  // S4a: the full core disc's glow is stamped from a bake normalized to one disc radius; the blur it asks for stays 20.
+  var discBlurs = [];
+  var stampDisc = full.sandbox.stampWallpaperDiscGlow;
+  full.sandbox.stampWallpaperDiscGlow = function (fillKey, paintDisc, shadowColor, shadowBlur, radius) {
+    discBlurs.push(shadowBlur);
+    return stampDisc(fillKey, paintDisc, shadowColor, shadowBlur, radius);
+  };
+  core(full);
+  assert.deepStrictEqual(discBlurs, [20], "the full core blur must stay 20");
   assert.ok(core(mini).some(function (v) { return Math.abs(v - 20 * S) < 1e-9; }), "the mini core blur must scale");
 });
 
@@ -968,6 +981,9 @@ test("the nebula fragment shader requests highp float (NEB-1)", function () {
   assert.match(fragment[1], /^\s*precision highp float;/m);
   assert.doesNotMatch(fragment[1], /precision mediump float;/);
 });
+
+// S4a (odd/tasks/scene-optimizations.md): PERF-5 baked glows instead of per-frame shadowBlur, see blur-free-glow.checks.js.
+blurFreeGlowChecks.register(test, sceneDir, "processing");
 
 var failures = [];
 tests.forEach(function (t) {
