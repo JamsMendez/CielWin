@@ -66,7 +66,18 @@ dotnet test CielWin.sln
 | `scene` (default) | Scene wallpaper | The scene composited over the desktop wallpaper, full screen |
 | `scene-mini` | Mini window | A small square, always-on-top, click-through scene window in the work area; the desktop background stays as Windows has it |
 
-Scenes (`scene`): `processing` (default), `explorer`, `idle`, `raphael`. Scenes render at a fixed 60 fps.
+Scenes (`scene`): `processing` (default), `explorer`, `idle`, `raphael`.
+
+### Frame rate
+
+Every scene, in both modes, runs at one global frame-rate cap (`frame-rate`): **60 FPS** (default)
+or **30 FPS**. Choose it from the tray's **Frame rate** submenu.
+
+- Changing it rebuilds the scene page (the wallpaper layer or the mini window) at the new cap, so
+  the animation may restart. An alert that is showing comes back for its remaining time without
+  playing its sound again; a held warning stays up.
+- The new rate is saved at once. Choosing the current rate does nothing.
+- It is a cap, not a guarantee: a heavy scene or a busy machine can draw fewer frames.
 
 The mini window is `monitor height / 5` on a side and sits at one of eight positions of the work
 area (`mini-position`).
@@ -83,12 +94,13 @@ again (dropped after waiting more than 5 minutes). The mini window is never paus
 |------|--------|
 | Wallpaper mode | Switch live between **Scene wallpaper** and **Mini window** (checked item = current) |
 | Scene | Switch to Processing, Explorer, Idle or Raphael (checked item = current) |
+| Frame rate | Switch the global cap between **30 FPS** and **60 FPS** for every scene and both modes (checked item = current); rebuilds the scene page (see *Frame rate*) |
 | Import failed sound… / Import warning sound… | Pick a `.wav`, `.mp3` or `.m4a` file; it is copied into `%LOCALAPPDATA%\CielWin\sounds\` and played when an alert of that kind appears |
 | Remove failed sound / Remove warning sound | Delete that kind's imported sound (shown only when it has one) |
 | Alert sounds | Mute or unmute alert sounds (checked = on; shown only when at least one sound is imported) |
 | Exit | Close CielWin |
 
-Mode, scene and sound changes are saved to the settings file.
+Mode, scene, frame-rate and sound changes are saved to the settings file.
 
 No sound ships with CielWin: alerts are silent until you import one. Each kind plays only its own
 sound (an alert with any failed tile plays the failed sound); a kind without a sound stays silent.
@@ -132,6 +144,7 @@ File: `%LOCALAPPDATA%\CielWin\settings.conf`
 | `http-server` | `on`, `off` (also `true`/`false`, `1`/`0`) | `on` |
 | `http-server-port` | `1`-`65535` | `43811` |
 | `scene` | `processing`, `explorer`, `idle`, `raphael` | `processing` |
+| `frame-rate` | `30`, `60` (global FPS cap for every scene and both modes) | `60` |
 | `mini-position` | `top-left`, `top-center`, `top-right`, `right-center`, `bottom-right`, `bottom-center`, `bottom-left`, `left-center` | `top-right` |
 | `alert-sounds` | `on`, `off` (also `true`/`false`, `1`/`0`) | `on` |
 | `failed-sound` | A file name in `%LOCALAPPDATA%\CielWin\sounds\` ending in `.wav`, `.mp3` or `.m4a`; empty for none | empty |
@@ -139,7 +152,7 @@ File: `%LOCALAPPDATA%\CielWin\settings.conf`
 | `alert-hold-max-seconds` | `10`-`3600` | `600` |
 
 `scene` and `mini-position` are also written by CielWin whenever you change them from the tray, the
-hotkeys or the HTTP API; `alert-sounds`, `failed-sound` and `warning-sound` by the tray. A sound
+hotkeys or the HTTP API; `frame-rate` by the tray's **Frame rate** submenu; `alert-sounds`, `failed-sound` and `warning-sound` by the tray. A sound
 value that is not a bare file name of a supported format reads as no sound. `http-server = off` closes the port and disables every HTTP route.
 `alert-hold-max-seconds` is how long a held warning (see *Held warning* below) may stay up without
 being cleared, counted from its request.

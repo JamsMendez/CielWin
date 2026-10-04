@@ -76,7 +76,8 @@ public interface IMiniSceneBrowser : IDisposable
 /// <summary>
 /// Owns the mini window's surface and browser. All members run on the owning UI thread. Placement is
 /// never activating (the window's own extended styles see to that); the page viewport is the window's
-/// physical pixel size, square. The frame cap is the scene pages' fixed 60 fps.
+/// physical pixel size, square. The page runs at the frame-rate cap the controller was built with
+/// (<c>frame-rate</c>, 30 or 60); a rate change replaces the whole window.
 /// </summary>
 public sealed class MiniSceneWindowController : IMiniSceneWindow
 {
@@ -86,6 +87,7 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
     private IMiniSceneSurface? _surface;
     private WallpaperScene _scene;
+    private readonly int _fps;
     private DrawingRectangle _viewport;
     // At most this many re-attaches after WebView2 process failures in a burst: a browser that keeps
     // dying gives up (traced) instead of looping.
@@ -112,8 +114,9 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
 
     public MiniSceneWindowController(
         Func<IMiniSceneSurface> surfaceFactory, IMiniSceneBrowser browser, Action<string>? trace = null,
-        Func<DateTimeOffset>? clock = null, IFrameSource? frames = null)
+        Func<DateTimeOffset>? clock = null, IFrameSource? frames = null, int fps = 60)
     {
+        _fps = fps;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _frames = frames;
         _surfaceFactory = surfaceFactory;
@@ -134,9 +137,9 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     /// The real window and WebView2 (its own <c>WebView2Mini</c> user-data folder), gliding on WPF render
     /// frames. Construct on the UI STA.
     /// </summary>
-    public static MiniSceneWindowController CreateProduction(Action<string>? trace = null) =>
+    public static MiniSceneWindowController CreateProduction(Action<string>? trace = null, int fps = 60) =>
         new(() => new Win32MiniSceneWindow(), new WebView2MiniSceneBrowser(), trace,
-            frames: new CompositionTargetFrameSource());
+            frames: new CompositionTargetFrameSource(), fps: fps);
 
     /// <summary>
     /// The page viewport for a window of <paramref name="bounds"/>: origin at zero and SQUARE (the
@@ -375,7 +378,7 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     private void NavigateToScene()
     {
         _pageReady = false;
-        _browser.Navigate(WebViewAlertLayerController.SceneUrl(_scene, "mini"));
+        _browser.Navigate(WebViewAlertLayerController.SceneUrl(_scene, "mini", _fps));
     }
 
     private void Post(string json)

@@ -44,6 +44,9 @@ public sealed class WebViewAlertLayerController : IDisposable
     // also makes a later recreate (TearDown from a host change, then Poll calling CreateAsync again)
     // navigate to whatever scene is CURRENT -- TearDown never touches this field.
     private WallpaperScene _currentScene;
+    // The frame-rate cap every navigation carries, fixed for this controller's life: a rate change
+    // rebuilds the whole layer (AppComposition), so it never changes under a live page.
+    private readonly int _fps;
     // The DESIRED pause state of the scene page, kept here (not only posted) because a page that is
     // not ready yet, or is recreated/re-navigated later (Explorer restart, process failure, scene
     // switch), starts out running and must be told again once ready.
@@ -76,14 +79,17 @@ public sealed class WebViewAlertLayerController : IDisposable
     /// <param name="trace">Receives one line per lifecycle event; see <see cref="AlertLayerTrace"/>.</param>
     /// <param name="clock">Test seam for the backoff/pending-show clock.</param>
     /// <param name="scene">The scene to navigate to first.</param>
+    /// <param name="fps">The frame-rate cap (<c>frame-rate</c>), 30 or 60; anything else is 60.</param>
     public WebViewAlertLayerController(ICompositionOverlaySurface host, Action<string>? trace = null,
-        Func<DateTimeOffset>? clock = null, WallpaperScene scene = WallpaperScene.Processing)
+        Func<DateTimeOffset>? clock = null, WallpaperScene scene = WallpaperScene.Processing,
+        int fps = 60)
     {
         if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
             throw new InvalidOperationException("A WPF UI STA is required.");
         _host = host;
         _trace = trace;
         _currentScene = scene;
+        _fps = fps;
         _state = new AlertLayerPreloadState(clock);
         _dispatcher = Dispatcher.CurrentDispatcher;
         _poll = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background,
@@ -168,7 +174,7 @@ public sealed class WebViewAlertLayerController : IDisposable
         _navigateStopwatch = Stopwatch.StartNew();
         _state.NavigationStarted();
         _navigation.BeforeHostNavigate();
-        _controller.CoreWebView2.Navigate(SceneUrl(_currentScene));
+        _controller.CoreWebView2.Navigate(SceneUrl(_currentScene, fps: _fps));
     }
 
     /// <summary>The scene the controller navigates to next (and is showing, once ready).</summary>
@@ -321,7 +327,7 @@ public sealed class WebViewAlertLayerController : IDisposable
             // inject an unexpected path segment or query into this URL.
             _state.NavigationStarted();
             _navigation.BeforeHostNavigate();
-            _controller.CoreWebView2.Navigate(SceneUrl(_currentScene));
+            _controller.CoreWebView2.Navigate(SceneUrl(_currentScene, fps: _fps));
         }
         catch (Exception ex)
         {
@@ -524,12 +530,13 @@ public sealed class WebViewAlertLayerController : IDisposable
 
     /// <summary>
     /// The exact URL <see cref="CreateAsync"/> and <see cref="SwitchScene"/> both navigate to for
-    /// <paramref name="scene"/>. The frame cap is fixed at 60 fps (the scene pages parse the
-    /// <c>fps</c> query param); <paramref name="variant"/> selects a page variant such as
-    /// <c>mini</c>. Internal so tests can exercise it directly.
+    /// <paramref name="scene"/>. <paramref name="fps"/> is the global frame-rate cap (the scene pages
+    /// parse the <c>fps</c> query param, see <c>shared/js/render-loop.js</c>): only 30 or 60 ever reach
+    /// the URL, anything else falls back to the default 60. <paramref name="variant"/> selects a page
+    /// variant such as <c>mini</c>. Internal so tests can exercise it directly.
     /// </summary>
-    internal static string SceneUrl(WallpaperScene scene, string? variant = null) =>
-        $"https://cielwin-scene.example/{SceneFolderName(scene)}/index.html?fps=60"
+    internal static string SceneUrl(WallpaperScene scene, string? variant = null, int fps = 60) =>
+        $"https://cielwin-scene.example/{SceneFolderName(scene)}/index.html?fps={(Settings.IsFrameRate(fps) ? fps : Settings.Default.FrameRate)}"
         + (variant is null ? "" : $"&variant={variant}");
 
     public void Dispose()

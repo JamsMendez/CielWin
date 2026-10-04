@@ -17,7 +17,7 @@ namespace CielWin.App;
 /// thread and only post work to the UI thread (the scene route must not block).
 /// </para>
 /// <para>
-/// Persistence: every change (scene, mode, mini position, alert sounds, imported sounds) goes through one
+/// Persistence: every change (scene, mode, frame rate, mini position, alert sounds, imported sounds) goes through one
 /// <see cref="SynchronizedSettingsStore"/>, which keeps the in-memory snapshot current. When the
 /// settings file exists but could not be read (<see cref="SettingsLoadResult.CanSave"/> false), the
 /// store's save is replaced by a trace for the whole session: saving would overwrite the user's real
@@ -92,6 +92,7 @@ public sealed class AppComposition : IDisposable
             _tray = _host.BuildTray(new TrayMenuController(
                 () => _mode, mode => _host.OnUiThread(() => SelectMode(mode)),
                 () => _store.Current.WallpaperScene, scene => _host.OnUiThread(() => SwitchScene(scene, "tray")),
+                () => _store.Current.FrameRate, fps => _host.OnUiThread(() => SelectFrameRate(fps)),
                 () => _store.Current.AlertSoundsEnabled, () => _host.OnUiThread(ToggleAlertSounds),
                 kind => _store.Current.SoundFor(kind) is not null,
                 kind => _host.OnUiThread(() => ImportAlertSound(kind)),
@@ -166,14 +167,16 @@ public sealed class AppComposition : IDisposable
         }
 
         var settings = _store.Current;
+        var fps = settings.FrameRate;
         try
         {
             ISceneSurface surface = _mode == WallpaperMode.SceneMini
                 ? new MiniSceneSurface(
-                    _host.CreateMiniWindow(), _host.ReadPrimaryDisplay, settings.WallpaperScene,
+                    _host.CreateMiniWindow(fps), _host.ReadPrimaryDisplay, settings.WallpaperScene,
                     settings.MiniPosition, _trace)
                 : new WallpaperSceneSurface(
-                    _host.CreateWallpaperHost(), _host.CreateWallpaperThread(), _host.CreateSceneLayer,
+                    _host.CreateWallpaperHost(), _host.CreateWallpaperThread(),
+                    (overlay, scene) => _host.CreateSceneLayer(overlay, scene, fps),
                     settings.WallpaperScene, _trace);
             _surface = surface;
             surface.Start();
@@ -193,13 +196,41 @@ public sealed class AppComposition : IDisposable
         }
 
         _mode = mode;
+        ReplaceSurface();
+        Persist(settings => settings with { WallpaperMode = mode });
+        _trace($"mode switched mode={mode}");
+    }
+
+    /// <summary>
+    /// Tray: the global frame-rate cap. The pages read it from their URL, so the current surface is
+    /// rebuilt at the new rate, as a mode switch rebuilds it. The rate is recorded first (the rebuilt
+    /// surface reads it) and saved at once, like the mode. Anything but 30 or 60, or the current rate,
+    /// changes nothing.
+    /// </summary>
+    private void SelectFrameRate(int fps)
+    {
+        if (_disposed || !Settings.IsFrameRate(fps) || fps == _store.Current.FrameRate)
+        {
+            return;
+        }
+
+        Persist(settings => settings with { FrameRate = fps });
+        ReplaceSurface();
+        _trace($"frame-rate switched fps={fps}");
+    }
+
+    /// <summary>
+    /// Tears the current surface down and brings up a new one for the current mode and settings. An
+    /// alert inside its duration comes back on the new surface for its remaining time, never sounded
+    /// again (<see cref="AlertDriver.SurfaceReplaced"/>).
+    /// </summary>
+    private void ReplaceSurface()
+    {
         var previous = _surface;
         _surface = null;
         SafeDispose("surface", previous);
         _alerts.SurfaceReplaced();
         ActivateSurface();
-        Persist(settings => settings with { WallpaperMode = mode });
-        _trace($"mode switched mode={mode}");
     }
 
     /// <summary>Tray: flips whether new alerts play their sound, and persists it.</summary>

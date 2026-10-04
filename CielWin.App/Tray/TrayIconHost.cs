@@ -40,6 +40,16 @@ public sealed class TrayIconHost : IDisposable
             sceneItems.Add((scene, item));
         }
 
+        var frameRateItem = new ToolStripMenuItem(FrameRateMenuLabel);
+        var frameRateItems = new List<(int Fps, ToolStripMenuItem Item)>();
+        foreach (var fps in TrayMenuController.FrameRates)
+        {
+            var item = new ToolStripMenuItem(FrameRateLabel(fps));
+            item.Click += Guarded("frame-rate", () => controller.SelectFrameRate(fps), trace);
+            frameRateItem.DropDownItems.Add(item);
+            frameRateItems.Add((fps, item));
+        }
+
         var alertSoundsItem = new ToolStripMenuItem(AlertSoundsLabel);
         alertSoundsItem.Click += Guarded("alert-sounds", controller.ToggleAlertSounds, trace);
 
@@ -58,6 +68,7 @@ public sealed class TrayIconHost : IDisposable
         {
             [TrayMenuEntry.Mode] = modeItem,
             [TrayMenuEntry.Scene] = sceneItem,
+            [TrayMenuEntry.FrameRate] = frameRateItem,
             [TrayMenuEntry.ImportFailedSound] = SoundItem(
                 TrayMenuEntry.ImportFailedSound, "import-failed-sound", () => controller.ImportAlertSound(AlertKind.Failed)),
             [TrayMenuEntry.ImportWarningSound] = SoundItem(
@@ -100,6 +111,11 @@ public sealed class TrayIconHost : IDisposable
             {
                 item.Checked = controller.Scene == scene;
             }
+
+            foreach (var (fps, item) in frameRateItems)
+            {
+                item.Checked = controller.FrameRate == fps;
+            }
         }
 
         RefreshChecks();
@@ -122,13 +138,15 @@ public sealed class TrayIconHost : IDisposable
     public const string IconResourceName = "CielWin.App.Assets.raphael-mini.ico";
 
     /// <summary>
-    /// The order the items appear in: the mode switch, the scene switch, the sound group (imports,
-    /// removes, the mute toggle), then exit. A separator precedes the sound group and exit.
+    /// The order the items appear in: the mode switch, the scene switch, the frame-rate switch, the
+    /// sound group (imports, removes, the mute toggle), then exit. A separator precedes the sound group
+    /// and exit.
     /// </summary>
     public static IReadOnlyList<TrayMenuEntry> MenuOrder { get; } =
     [
         TrayMenuEntry.Mode,
         TrayMenuEntry.Scene,
+        TrayMenuEntry.FrameRate,
         TrayMenuEntry.ImportFailedSound,
         TrayMenuEntry.ImportWarningSound,
         TrayMenuEntry.RemoveFailedSound,
@@ -156,6 +174,10 @@ public sealed class TrayIconHost : IDisposable
     };
 
     public static string SceneLabel(WallpaperScene scene) => scene.ToString();
+
+    public const string FrameRateMenuLabel = "Frame rate";
+
+    public static string FrameRateLabel(int fps) => $"{fps} FPS";
 
     /// <summary>
     /// A click handler that runs <paramref name="click"/> and never lets it throw: the click arrives as

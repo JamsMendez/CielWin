@@ -178,6 +178,25 @@ public sealed class MiniSceneWindowControllerTests
     }
 
     [Fact]
+    public void TheMiniPageCarriesTheFrameRateTheWindowWasBuiltWith()
+    {
+        var surface = new FakeSurface();
+        var browser = new FakeBrowser();
+        var controller = new MiniSceneWindowController(() => surface, browser, _trace.Add, () => _now, _frames, fps: 30);
+
+        controller.Show(WallpaperScene.Explorer, Corner);
+        browser.AttachResult.SetResult(true);
+        controller.SwitchScene(WallpaperScene.Idle);
+
+        Assert.Equal(
+            [
+                "https://cielwin-scene.example/explorer/index.html?fps=30&variant=mini",
+                "https://cielwin-scene.example/idle/index.html?fps=30&variant=mini",
+            ],
+            browser.Navigations);
+    }
+
+    [Fact]
     public void SwitchingToAnotherSceneNavigatesToItsMiniPage()
     {
         var (controller, _, browser) = Create();

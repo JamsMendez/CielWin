@@ -12,6 +12,9 @@ public enum TrayMenuEntry
     /// <summary>Submenu: every bundled scene, the current one checked.</summary>
     Scene,
 
+    /// <summary>Submenu: the global frame-rate cap, 30 FPS or 60 FPS, the current one checked.</summary>
+    FrameRate,
+
     /// <summary>Opens a file dialog and imports the sound a failed alert plays.</summary>
     ImportFailedSound,
 

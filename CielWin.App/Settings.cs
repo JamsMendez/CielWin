@@ -68,6 +68,11 @@ public enum WallpaperScene
 /// How long a held warning (<c>duration: 0</c>) may stay up without being cleared, counted from its
 /// request (<c>alert-hold-max-seconds</c>), 10-3600, default 600. Hand-edited; read at start.
 /// </param>
+/// <param name="FrameRate">
+/// The one global frame-rate cap every scene page runs at, in both modes (<c>frame-rate</c>): 30 or
+/// 60 (default, CielWin's cadence before the setting existed). Chosen from the tray's Frame rate
+/// submenu, which rebuilds the scene page at the new cap.
+/// </param>
 /// <remarks>
 /// A flat <c>key = value</c> text file a person is expected to edit. Blank lines and <c>#</c> comments
 /// are ignored, unknown keys (including every key CosmicWin had that CielWin dropped) are skipped,
@@ -86,9 +91,16 @@ public sealed record Settings(
     bool AlertSoundsEnabled = true,
     string? FailedSound = null,
     string? WarningSound = null,
-    int AlertHoldMaxSeconds = 600)
+    int AlertHoldMaxSeconds = 600,
+    int FrameRate = 60)
 {
     public static Settings Default { get; } = new();
+
+    /// <summary>The only frame rates <see cref="FrameRate"/> takes, in tray order.</summary>
+    public static IReadOnlyList<int> FrameRates { get; } = [30, 60];
+
+    /// <summary>Whether <paramref name="fps"/> is one of <see cref="FrameRates"/>.</summary>
+    public static bool IsFrameRate(int fps) => fps is 30 or 60;
 
     private const string WallpaperModeKey = "wallpaper-mode";
     private const string HttpServerKey = "http-server";
@@ -103,6 +115,7 @@ public sealed record Settings(
     private const string FailedSoundKey = "failed-sound";
     private const string WarningSoundKey = "warning-sound";
     private const string AlertHoldMaxSecondsKey = "alert-hold-max-seconds";
+    private const string FrameRateKey = "frame-rate";
 
     /// <summary>Whether either kind has an imported sound (the tray hides the mute toggle otherwise).</summary>
     public bool HasAnySound => FailedSound is not null || WarningSound is not null;
@@ -162,6 +175,7 @@ public sealed record Settings(
         var alertSounds = Default.AlertSoundsEnabled;
         string? failedSound = null, warningSound = null;
         var alertHoldMaxSeconds = Default.AlertHoldMaxSeconds;
+        var frameRate = Default.FrameRate;
 
         foreach (var rawLine in content.Split('\n'))
         {
@@ -243,6 +257,9 @@ public sealed record Settings(
                 case AlertHoldMaxSecondsKey:
                     alertHoldMaxSeconds = TryReadHoldMaxSeconds(value) ?? alertHoldMaxSeconds;
                     break;
+                case FrameRateKey:
+                    frameRate = TryReadFrameRate(value) ?? frameRate;
+                    break;
             }
         }
 
@@ -255,7 +272,8 @@ public sealed record Settings(
             alertSounds,
             failedSound,
             warningSound,
-            alertHoldMaxSeconds);
+            alertHoldMaxSeconds,
+            frameRate);
     }
 
     /// <summary>The file this instance would be written as, comment and all.</summary>
@@ -279,6 +297,10 @@ public sealed record Settings(
          # {SceneKey}: the current scene: `processing` (default), `explorer`, `idle` or `raphael`.
          # Updated whenever the scene is switched, so it survives restarts.
          {SceneKey} = {NameOf(SceneNames, WallpaperScene)}
+
+         # {FrameRateKey}: the global frame-rate cap, 30 or 60 (default) FPS, shared by every scene in
+         # both modes. The tray's Frame rate menu changes it live by rebuilding the scene page.
+         {FrameRateKey} = {FrameRate.ToString(CultureInfo.InvariantCulture)}
 
          # {MiniPositionKey}: where the `scene-mini` window sits in the work area: a corner
          # (`top-left`, `top-right` (default), `bottom-left`, `bottom-right`) or a side midpoint
@@ -343,6 +365,14 @@ public sealed record Settings(
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) && seconds is >= 10 and <= 3600
             ? seconds
             : null;
+
+    /// <summary>Reads a frame rate, exactly <c>30</c> or <c>60</c>; anything else is <see langword="null"/>.</summary>
+    private static int? TryReadFrameRate(string value) => value switch
+    {
+        "30" => 30,
+        "60" => 60,
+        _ => null,
+    };
 
     /// <summary>Reads a TCP port, 1-65535; anything else (or not a whole number) is <see langword="null"/>.</summary>
     private static int? TryReadPort(string value) =>
