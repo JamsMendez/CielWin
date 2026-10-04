@@ -42,6 +42,9 @@ Close the non-blocking follow-ups left after the extraction merge (see `odd/task
 - [x] F5 Icon contrast test (review R3-ico-unverified): a deterministic test over `CielWin.App/Assets/raphael-mini.ico`
       that would fail if the 16/20/24 px frames lost their contrast (e.g. went pale or fully opaque).
       Route: same delegated writer.
+- [ ] F6 Evaluate porting the CieLinux scene fixes listed in CieLinux `docs/cielwin-portability.md`
+      (github.com/JamsMendez/CieLinux): NEB-1 nebula `precision highp float` (recommended), PERF-5 baked glows
+      (measure CielWin draw rate at 60 FPS first), O1–O3/B5 (optional).
 
 ## Acceptance criteria
 
