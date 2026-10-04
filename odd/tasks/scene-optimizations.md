@@ -138,3 +138,4 @@ measurement, so GPU-bound wins are unproven on WebView2.
     App 716 passed / 0 failed.
 
 Next: S4a needs a Windows draws/s + GPU measurement (S2 probe) and the user's live visual approval; then S4b.
+- S4a measured (c22fe8c, Release, same machine/method as S2, 1 pass): processing 56.4 draws/s (was 34–37), p99 30.4 ms; raphael 60, CPU ~101% (was ~144%); explorer 60, ~92% (was 128–147%); idle 60, ~47% (was 74–84%); explorer+warning 59.4, ~184% (was ~218%). Includes S1 gains. User approved S4a appearance live (2026-10-04).
