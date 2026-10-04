@@ -105,3 +105,9 @@ H4 done (route: delegated writer, separate commit).
   22 skipped / 0 failed; App.Tests 671 passed / 0 failed.
 - Commit: `a8b8364` feat(alerts): repeat the held warning sound every 5 seconds
 - Next: RDD assess of the S2+S3 slice (base `6cf8733`), then local `--no-ff` merge into `main`.
+- S2+S3 RDD (base `6cf8733`, H1b+H4): medium, 447 lines, `slice_budget_reached`; granted; 1-lens (reliability)
+  review approved and acknowledged (lineage `review-22d30f5a9b3dfbef`, authority burned). One non-blocking
+  SUGGESTION (follow-up): test that the suspended-held guard lifts once the suspended warning is cleared or expires.
+- Parent spot check: `dotnet test CielWin.App.Tests --filter AlertDriver` 30/30.
+- CieLinux has the same H1b bugs; fixed there on `fix/held-warning-one-held-and-sound` at the user's request.
+- Delivery: merged locally into `main` with `--no-ff`; the user pushes.
