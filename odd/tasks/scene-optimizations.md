@@ -36,7 +36,9 @@ measurement, so GPU-bound wins are unproven on WebView2.
   Commit: `27dbc31`. Surface widened (user-approved) to `idle/js/rings.js` and
   `explorer/js/rising-sparks.js` (CieLinux keeps the idle vignette and blue-layer glow there, not in `animate.js`).
 - [x] S2 Windows baseline measurement (draws/s, CPU). Route: delegated (measurement worker).
-- [ ] S3 30/60 FPS setting + tray. Route: delegated (writer).
+- [x] S3 30/60 FPS setting + tray. Route: delegated (writer: settings + seams + tray + composition + tests).
+  Commit: `6e7e772`. Surface widened (user-approved) to `Wallpaper/MiniSceneWindowController.cs` (the mini builds
+  its own page URL).
 - [ ] S4 PERF-5, alert caches + W4, spark atlas — gated on S2 numbers and user visual approval. Route: delegated.
 
 ## Acceptance criteria
@@ -63,4 +65,22 @@ measurement, so GPU-bound wins are unproven on WebView2.
   - Deviation: the earth reference runs in the same vm realm (one load; the earth.js bake costs ~7 s per realm)
     instead of CieLinux's second stripped-copy harness. CielWin had no source hash pins, so nothing was re-pinned.
 
-Next: S3 (30/60 FPS setting + tray); S4 stays gated on user visual approval.
+- S3 done: `frame-rate` setting (`30`|`60`, default `60`, anything else keeps the default / an earlier valid
+  value), serialized with a comment after `scene`; `Settings.FrameRates`/`IsFrameRate`. `SceneUrl(scene, variant,
+  fps)` carries it (only 30/60 reach the URL, else 60); the wallpaper layer (`WebViewAlertLayerController`) and the
+  mini (`MiniSceneWindowController`) get it through the `CreateSceneLayer`/`CreateMiniWindow` seams. Tray: **Frame
+  rate** submenu (30 FPS / 60 FPS, checked = current) after Scene. On change `AppComposition.SelectFrameRate`
+  persists, then `ReplaceSurface()` (the mode-switch path: dispose, `AlertDriver.SurfaceReplaced()`, activate);
+  same rate or any other value is a no-op. `SurfaceReplaced` clears only the displayed id and the H4 repeat timer,
+  so a showing alert / held warning comes back for its remaining time without re-sounding.
+  - RED: test project failed to compile, 40 errors (missing `Settings.FrameRate`/`IsFrameRate`/`FrameRates`,
+    `SceneUrl(..., fps)`, `TrayMenuController.FrameRate`/`SelectFrameRate`/`FrameRates`, `TrayMenuEntry.FrameRate`,
+    `TrayIconHost.FrameRateLabel`, the fps-taking seams and `MiniSceneWindowController(fps:)`).
+  - GREEN: focused 282/282; `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test CielWin.sln`: Interop
+    269 passed / 22 skipped, App 716 passed / 0 failed (+45 tests incl. `FrameRateWiringTests`).
+  - Deviations from CieLinux `bf213ae`: default 60 (CieLinux 30) to keep CielWin's cadence and appearance (user
+    decision); persisted immediately, following CielWin's mode-switch path, not after the new page reports ready
+    (user decision); no submenu glyph (Mode/Scene have one). Not touched (outside surface): the stale
+    `Settings.cs TryReadWallpaperFps` reference lives in `Wallpaper/Web/shared/js/render-loop.js:66`, not the host.
+
+Next: S4 stays gated on user visual approval.
