@@ -41,7 +41,12 @@ measurement, so GPU-bound wins are unproven on WebView2.
 - [x] S3 30/60 FPS setting + tray. Route: delegated (writer: settings + seams + tray + composition + tests).
   Commit: `6e7e772`. Surface widened (user-approved) to `Wallpaper/MiniSceneWindowController.cs` (the mini builds
   its own page URL).
-- [ ] S4 PERF-5, alert caches + W4, spark atlas — gated on S2 numbers and user visual approval. Route: delegated.
+- S4 split into three slices, each gated on measurement and user visual approval. Route: delegated.
+  - [x] S4a PERF-5 baked glows (processing + raphael) — implemented, pending Windows measurement and user visual
+    approval. Route: delegated (writer: 2 layers.js + 2 sprites.js + new check module + 2 harnesses).
+    Commit: `c22fe8c`.
+  - [ ] S4b alert-overlay caches + W4 (explorer + alert).
+  - [ ] S4c spark atlas (adapted, CielWin lacks the mini O1–O3 base).
 
 ## Acceptance criteria
 
@@ -102,4 +107,34 @@ measurement, so GPU-bound wins are unproven on WebView2.
     (user decision); no submenu glyph (Mode/Scene have one). Not touched (outside surface): the stale
     `Settings.cs TryReadWallpaperFps` reference lives in `Wallpaper/Web/shared/js/render-loop.js:66`, not the host (fixed in S1b).
 
-Next: S4 stays gated on user visual approval.
+- S4a done (implementation; CieLinux `dcc933b` PERF-5, no later CieLinux commit touched these scene files —
+  `bc66a34` is the nebula shader, already S1; `4574b4a`/`bf213ae`/alerts commits touch only tests or other scenes):
+  - `sprites.js` (both scenes): CieLinux's PERF-5 block verbatim (`wallpaperGlowCache` keyed by `WxH@scaleX,scaleY`,
+    `bakeShadowLayer` = the reference canvas shadow drawn off-bitmap and brought back with `shadowOffsetX`,
+    `wallpaperLineGlow`/`stampWallpaperLineGlows` end caps + stretched middle, 8+1 pulse levels blended,
+    disc glows in 3% blur-to-radius steps).
+  - Baked (full wallpaper only; mini keeps every `shadowBlur`): processing rays/spokes (`drawGlowSegments`),
+    folding band outlines (butt-capped segments, closing bar dropped when it coincides), central octagon (pulse
+    levels; wobble moves only the stroke), core disc; raphael rays/spokes, golden hexadecagon (pulse levels), hot
+    core disc (`paintRadialGlowLayer` with a shadow), counter panels (static bake), glyph-ring delimiters.
+  - Deviations: adapted onto CielWin's reference functions (no O1–O3/B5 mini base): band outline segments come
+    from the `points` objects, the octagon bake uses `CENTRAL_OCTAGON_STROKE_PX`. Raphael's five delimiter
+    shadows (cached in CieLinux by O3/B5 as a pixel-identical device-aligned layer) are baked here with
+    `bakeShadowLayer`, screened onto each other in the bake ('screen' is associative/commutative) and stamped
+    at (cx, cy): near-identical, not pixel-identical (sub-pixel resampling of the blur). The alert-overlay letter
+    blur (`shared/js/alert-overlay.js`) is left for S4b.
+  - Could look different: thin ray edges (CieLinux measured mean 0.22–0.27 levels, max ~60 on thin ray edges),
+    band outline corners at the bars, pulse frames between baked levels, delimiter rings (resampled blur).
+  - Tests: new `CielWin.App.Tests/Wallpaper/Web/blur-free-glow.checks.js` (port of CieLinux
+    `blur-free-glow.contract.test.mjs`, per-canvas recording contexts), registered by both scene harnesses: S4a
+    blocks only add lines (stripping them restores the 2b6a795 LF SHA-256 of all four files); no frame paints a
+    shadow at 1920x1080/3440x1440/1280x720@2 and mini still does (and bakes nothing); bakes are shadow-only,
+    warm after one 600 s period, rebuilt on resize; every layer keeps the reference paints minus shadows; ray
+    glows are laid along each segment; pulse glows blend levels around the reference blur. The processing
+    "mini scales fixed px sizes" test now reads blurs on the cold (baking) call and widths on the warm one, and
+    checks the core disc's requested blur (20) via a `stampWallpaperDiscGlow` spy.
+  - RED: processing 45/51 (6 S4a checks), raphael 27/33 (6 S4a checks). GREEN: processing 51/51, raphael 33/33.
+    `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test CielWin.sln`: Interop 269 passed / 22 skipped,
+    App 716 passed / 0 failed.
+
+Next: S4a needs a Windows draws/s + GPU measurement (S2 probe) and the user's live visual approval; then S4b.
