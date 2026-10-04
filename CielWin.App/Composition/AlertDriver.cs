@@ -9,22 +9,35 @@ namespace CielWin.App.Composition;
 /// cannot be seen and ending it when its duration runs out. A newly displayed alert plays its sound once.
 /// </summary>
 /// <remarks>
-/// <see cref="Accept"/> runs on the HTTP server thread; <see cref="Update"/> and
+/// <para>
+/// <see cref="Accept"/> and <see cref="Clear"/> run on the HTTP server thread; <see cref="Update"/> and
 /// <see cref="SurfaceReplaced"/> on the UI thread. The queue is shared between them under one lock.
+/// </para>
+/// <para>
+/// Alerts are told apart by <see cref="ActiveAlert.Id"/>: a held warning resuming after a failed alert
+/// comes back with its own id (shown again for the rest of its hold, never sounded twice) and a fresh
+/// <see cref="ActiveAlert.StartedAt"/>, so a showing held warning is
+/// <c>active.Command.IsHeld</c>, and a show or resume is the tick where the displayed id changes.
+/// </para>
 /// </remarks>
 internal sealed class AlertDriver(
     TimeProvider clock, Func<PrimaryDisplayInfo> readDisplay, IAlertSoundPlayer sounds, Func<bool> soundsEnabled,
-    Action<string> trace)
+    Action<string> trace, TimeSpan? holdMax = null)
 {
     private readonly object _gate = new();
-    private readonly AlertQueue _queue = new(onDiagnostic: trace);
-    private ActiveAlert? _displayed;
+    private readonly AlertQueue _queue = new(onDiagnostic: trace, holdMax: holdMax);
+    private long? _displayed;
 
-    // The last alert whose sound was played (or attempted). The queue builds a new ActiveAlert per
-    // promoted command, so the same instance coming back means a re-show after a surface change.
-    private ActiveAlert? _sounded;
+    // The last two alerts whose sound was played (or attempted): a held warning and the failed alert
+    // that preempted it are alive at once, so a resume must not count as new.
+    private long? _sounded;
+    private long? _soundedBefore;
 
-    /// <summary>Parses and queues one command; the reply goes back to the HTTP caller.</summary>
+    /// <summary>
+    /// Parses and queues one command. The reply goes back to the HTTP caller: <c>"ok id=&lt;n&gt;"</c>
+    /// when it shows or waits, plain <c>"ok"</c> when it is ignored (busy), <c>"error: ..."</c> when it
+    /// does not parse.
+    /// </summary>
     public string Accept(string text)
     {
         var parsed = AlertCommandParser.Parse(text);
@@ -35,9 +48,26 @@ internal sealed class AlertDriver(
             return AlertReplyProtocol.FormatError(error);
         }
 
+        long id;
         lock (_gate)
         {
-            _queue.Enqueue(command, clock.GetUtcNow());
+            id = _queue.Enqueue(command, clock.GetUtcNow());
+        }
+
+        // An ignored request keeps the plain "ok": it has no id to clear.
+        return id > 0 ? AlertHttpProtocol.FormatAccepted(id) : AlertReplyProtocol.OkReply;
+    }
+
+    /// <summary>
+    /// POST /v1/alerts/clear: clears alert <paramref name="id"/>, or with <see langword="null"/> the held
+    /// warning. Always <c>"ok"</c>, whether or not anything was cleared; the next <see cref="Update"/>
+    /// hides it.
+    /// </summary>
+    public string Clear(int? id)
+    {
+        lock (_gate)
+        {
+            _queue.Clear(id, clock.GetUtcNow());
         }
 
         return AlertReplyProtocol.OkReply;
@@ -58,7 +88,7 @@ internal sealed class AlertDriver(
             active = _queue.Advance(clock.GetUtcNow(), visible);
         }
 
-        if (surface is null || ReferenceEquals(active, _displayed))
+        if (surface is null || active?.Id == _displayed)
         {
             return;
         }
@@ -83,8 +113,9 @@ internal sealed class AlertDriver(
             return;
         }
 
-        // The deadline started when the queue promoted the command, not when a renderer picked it up.
-        var remaining = active.Command.Duration - (clock.GetUtcNow() - active.StartedAt);
+        // The deadline was set by the queue (promotion, or the request for a held warning), not when a
+        // renderer picked it up.
+        var remaining = active.EndsAt - clock.GetUtcNow();
         if (remaining <= TimeSpan.Zero)
         {
             return;
@@ -100,23 +131,25 @@ internal sealed class AlertDriver(
             return;
         }
 
-        _displayed = active;
+        _displayed = active.Id;
         PlaySoundOnce(active);
     }
 
     /// <summary>
     /// Failed wins over warning. Attempted at most once per alert: a throwing player is traced and
     /// not retried, and never takes the alert down with it. An alert shown while muted counts as
-    /// sounded, so unmuting never plays it on a later re-show.
+    /// sounded, so unmuting never plays it on a later re-show. A held warning resuming after a failed
+    /// alert is not played again.
     /// </summary>
     private void PlaySoundOnce(ActiveAlert active)
     {
-        if (ReferenceEquals(active, _sounded))
+        if (active.Id == _sounded || active.Id == _soundedBefore)
         {
             return;
         }
 
-        _sounded = active;
+        _soundedBefore = _sounded;
+        _sounded = active.Id;
         if (!soundsEnabled())
         {
             return;

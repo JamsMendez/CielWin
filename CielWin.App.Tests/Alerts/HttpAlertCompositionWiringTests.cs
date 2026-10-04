@@ -130,7 +130,34 @@ public sealed class HttpAlertCompositionWiringTests
         var harness = new CompositionHarness();
         using var composition = harness.Wire(new Settings());
 
-        Assert.Equal(AlertReplyProtocol.OkReply, harness.Server.Options.HandleAlert("warning:1"));
+        Assert.Equal("ok id=1", harness.Server.Options.HandleAlert("warning:1"));
+    }
+
+    [Fact]
+    public void ClearRoute_IsWired_AndEndsTheHeldWarningAtOnce()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(new Settings());
+        Assert.NotNull(harness.Server.Options.HandleAlertClear);
+
+        Assert.Equal("ok id=1", harness.Server.Options.HandleAlert("warning:1 duration:0"));
+        Assert.Single(harness.Layer.Starts);
+
+        Assert.Equal(AlertReplyProtocol.OkReply, harness.Server.Options.HandleAlertClear!(null));
+
+        Assert.Equal(1, harness.Layer.Ends);
+        Assert.Contains("alert 1 cleared", harness.Trace);
+    }
+
+    [Fact]
+    public void AHeldWarning_ShowsForTheHoldMaxFromTheSettings()
+    {
+        var harness = new CompositionHarness();
+        using var composition = harness.Wire(new Settings(AlertHoldMaxSeconds: 90));
+
+        harness.Server.Options.HandleAlert("warning:1 duration:0");
+
+        Assert.Equal(90000, Assert.Single(harness.Layer.Starts).DurationMilliseconds);
     }
 
     [Fact]

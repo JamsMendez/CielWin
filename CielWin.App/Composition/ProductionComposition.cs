@@ -79,7 +79,7 @@ public static partial class ProductionComposition
             LoadHttpToken = () => AlertHttpTokenFile.LoadOrCreate(trace.Record),
             CreateHttpServer = options => new LocalHttpCommandServer(
                 options.Port, options.Token, options.HandleAlert, options.Diagnostic,
-                handleWallpaperSceneSwitch: options.HandleSceneSwitch),
+                handleWallpaperSceneSwitch: options.HandleSceneSwitch, handleAlertClear: options.HandleAlertClear),
             CreateHotkeys = () =>
             {
                 Action<string> onHandlerFailed = errorType => trace.Record($"hotkey handler-failed error={errorType}");

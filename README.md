@@ -134,10 +134,13 @@ File: `%LOCALAPPDATA%\CielWin\settings.conf`
 | `alert-sounds` | `on`, `off` (also `true`/`false`, `1`/`0`) | `on` |
 | `failed-sound` | A file name in `%LOCALAPPDATA%\CielWin\sounds\` ending in `.wav`, `.mp3` or `.m4a`; empty for none | empty |
 | `warning-sound` | Same as `failed-sound` | empty |
+| `alert-hold-max-seconds` | `10`-`3600` | `600` |
 
 `scene` and `mini-position` are also written by CielWin whenever you change them from the tray, the
 hotkeys or the HTTP API; `alert-sounds`, `failed-sound` and `warning-sound` by the tray. A sound
-value that is not a bare file name of a supported format reads as no sound. `http-server = off` closes the port and disables both HTTP routes.
+value that is not a bare file name of a supported format reads as no sound. `http-server = off` closes the port and disables every HTTP route.
+`alert-hold-max-seconds` is how long a held warning (see *Held warning* below) may stay up without
+being cleared, counted from its request.
 
 **Legacy keys (read, never written).** Settings files from CosmicWin keep working:
 `wallpaper-mode = html | html-mini | mini`, `wallpaper-scene`, `mini-corner`, `alert-http` and
@@ -200,7 +203,7 @@ Body fields (all optional, whole numbers; unknown fields are rejected). Maximum 
 |-------|-------|---------|---------|
 | `warning` | 1-16 | - | Number of warning tiles |
 | `failed` | 1-16 | - | Number of failed tiles |
-| `duration` | 1-60 | 5 | Seconds the alert stays on screen |
+| `duration` | 0-60 | 5 | Seconds the alert stays on screen; `0` holds a warning until cleared |
 
 Rules: at least one of `warning` / `failed` is required, and `warning + failed` must not exceed 16.
 
@@ -222,20 +225,56 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:43811/v1/alerts `
   -ContentType application/json -Body '{"warning":2,"failed":1,"duration":5}'
 ```
 
-Only one alert exists at a time. A request that arrives while an alert is showing or waiting is
-ignored, but still answered `202`.
+An accepted alert is answered `202` with `ok id=<n>`: `n` starts at 1 and grows with every accepted
+alert while CielWin runs. Only one alert exists at a time. A request that arrives while an alert is
+showing or waiting is ignored, but still answered `202`, with a plain `ok` (no id). An alert waiting
+for the desktop (under a fullscreen window) starts once it is visible, or is dropped after 5 minutes.
+
+### Held warning
+
+`"duration": 0` holds a warning on screen until it is cleared, for example while a question waits
+for an answer. It is accepted with `warning` only; with any `failed` the answer is
+`400 error: 'duration:0' requires warning only`.
+
+```json
+{ "warning": 1, "duration": 0 }
+```
+
+- It ends when cleared (`POST /v1/alerts/clear`), or by itself `alert-hold-max-seconds` (default
+  600) after it was requested, not after it first showed. A held warning still waiting is dropped
+  by that deadline or the 5-minute start limit, whichever comes first.
+- A request with any failed tile while a held warning shows (or waits) is shown at once, for its
+  own duration, with its sound. The held warning is suspended and comes back when the failed alert
+  ends, for the rest of its hold, with the same id and without replaying its sound. If it was
+  cleared or passed its hold max meanwhile, it does not come back.
+- A warning while a held warning shows is ignored as usual. A held warning sent while a timed alert
+  shows waits and starts when that one ends.
+
+### Clear an alert: `POST /v1/alerts/clear`
+
+Body: `{}` clears the held warning, whatever its id (never a timed alert); `{ "id": n }` clears that
+alert, held or timed, whether it is showing, suspended or waiting. `n` is the id from `ok id=<n>`, a
+whole number of 1 or more; no other field is accepted. Maximum body size: 64 bytes. Always answered
+`202 ok`, whether or not anything was cleared.
+
+```bash
+curl -X POST http://127.0.0.1:43811/v1/alerts/clear \
+  -H "Authorization: Bearer $(cat "$LOCALAPPDATA/CielWin/http.token")" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
 
 ### Response codes
 
 | Code | Meaning |
 |------|---------|
-| `202` | Accepted (`ok`) |
+| `202` | Accepted (`ok`, or `ok id=<n>` for an accepted alert) |
 | `400` | Invalid body: not JSON, not an object, unknown field, wrong type, value out of range, invalid UTF-8 |
 | `401` | Missing or invalid bearer token (`WWW-Authenticate: Bearer`) |
 | `403` | Non-loopback client, `Origin` header present, or unexpected `Host` header |
 | `404` | Unknown path |
 | `405` | Method other than `POST` (`Allow: POST`) |
-| `413` | Body larger than the route's limit (256 or 1024 bytes) |
+| `413` | Body larger than the route's limit (64, 256 or 1024 bytes) |
 | `415` | Content type is not `application/json` |
 | `500` | Internal error |
 | `503` | Scene route only: scene switching is not available (for example, while CielWin shuts down) |

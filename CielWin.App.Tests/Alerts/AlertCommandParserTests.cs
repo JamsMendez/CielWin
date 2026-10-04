@@ -133,11 +133,10 @@ public sealed class AlertCommandParserTests
     [InlineData("warning:1.5")]
     [InlineData("warning:0")]
     [InlineData("warning:17")]
-    [InlineData("duration:0")]
     [InlineData("duration:61")]
     public void AMalformedToken_IsAnErrorNamingIt(string token)
     {
-        // "duration:0"/"duration:61" need at least one kind to reach the range check.
+        // "duration:61" needs at least one kind to reach the range check.
         var input = token.StartsWith("duration", StringComparison.Ordinal) ? $"warning:1 {token}" : token;
 
         var result = AlertCommandParser.Parse(input);
@@ -162,5 +161,48 @@ public sealed class AlertCommandParserTests
 
         Assert.Equal(256, atLimit.Length);
         Assert.True(AlertCommandParser.Parse(atLimit).Success);
+    }
+
+    /// <summary>H1: <c>duration:0</c> holds a warning-only command until it is cleared.</summary>
+    [Theory]
+    [InlineData("warning:1 duration:0", 1)]
+    [InlineData("WARNING:3 Duration:0", 3)]
+    [InlineData("duration:0 warning:16", 16)]
+    [InlineData("warning:1 duration:00", 1)]
+    public void DurationZero_WithWarningOnly_IsAHeldCommand(string input, int count)
+    {
+        var result = AlertCommandParser.Parse(input);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal([new AlertGroup(AlertKind.Warning, count)], result.Command!.Groups);
+        Assert.Equal(TimeSpan.Zero, result.Command.Duration);
+        Assert.True(result.Command.IsHeld);
+        Assert.False(result.Command.HasFailed);
+    }
+
+    [Theory]
+    [InlineData("failed:1 duration:0")]
+    [InlineData("warning:1 failed:1 duration:0")]
+    public void DurationZero_WithAnyFailedGroup_IsRejected(string input)
+    {
+        var result = AlertCommandParser.Parse(input);
+
+        Assert.False(result.Success);
+        Assert.Equal("'duration:0' requires warning only", result.Error);
+    }
+
+    [Fact]
+    public void DurationZero_Alone_StillNeedsAGroup() =>
+        Assert.Equal(
+            "at least one 'warning:N' or 'failed:N' group is required",
+            AlertCommandParser.Parse("duration:0").Error);
+
+    [Fact]
+    public void ATimedCommand_IsNotHeld_AndKnowsWhetherItHasAFailedTile()
+    {
+        var command = AlertCommandParser.Parse("warning:1 failed:1").Command!;
+
+        Assert.False(command.IsHeld);
+        Assert.True(command.HasFailed);
     }
 }

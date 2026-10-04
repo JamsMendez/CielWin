@@ -56,7 +56,8 @@ public sealed class AppComposition : IDisposable
             loaded.CanSave ? save : _ => _trace("settings-file save-skipped reason=unreadable"));
         _alerts = new AlertDriver(
             host.Clock, host.ReadPrimaryDisplay, host.CreateAlertSoundPlayer(ResolveAlertSound),
-            () => _store.Current.AlertSoundsEnabled, _trace);
+            () => _store.Current.AlertSoundsEnabled, _trace,
+            TimeSpan.FromSeconds(loaded.Settings.AlertHoldMaxSeconds));
     }
 
     /// <summary>Builds and starts everything. Call on the UI thread.</summary>
@@ -146,7 +147,7 @@ public sealed class AppComposition : IDisposable
             }
 
             _server = _host.CreateHttpServer(new HttpServerOptions(
-                settings.HttpServerPort, token, HandleAlert, HandleSceneSwitch, _trace));
+                settings.HttpServerPort, token, HandleAlert, HandleSceneSwitch, _trace, HandleAlertClear));
             _server.Start();
             // Start never throws: a port in use is reported by the server through the same trace.
             _trace($"http-server start requested port={settings.HttpServerPort}");
@@ -343,7 +344,19 @@ public sealed class AppComposition : IDisposable
     private string HandleAlert(string text)
     {
         var reply = _alerts.Accept(text);
-        if (reply == AlertReplyProtocol.OkReply && !_disposed)
+        if (AlertHttpProtocol.IsAccepted(reply) && !_disposed)
+        {
+            _host.OnUiThread(() => UpdateAlerts(IsCovered()));
+        }
+
+        return reply;
+    }
+
+    /// <summary>HTTP server thread. Clears the alert (null: the held warning), then hides it from the UI thread at once.</summary>
+    private string HandleAlertClear(int? id)
+    {
+        var reply = _alerts.Clear(id);
+        if (!_disposed)
         {
             _host.OnUiThread(() => UpdateAlerts(IsCovered()));
         }

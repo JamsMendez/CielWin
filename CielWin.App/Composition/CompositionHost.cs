@@ -75,12 +75,16 @@ public sealed class CompositionHost
 /// <summary>The primary monitor, physical pixels.</summary>
 public readonly record struct PrimaryDisplayInfo(Rectangle Bounds, Rectangle WorkArea);
 
-/// <summary>What the one local HTTP server is built with: both routes always present.</summary>
+/// <summary>What the one local HTTP server is built with.</summary>
 /// <param name="HandleAlert">Translated alert command text in, reply text out (server thread).</param>
 /// <param name="HandleSceneSwitch">Validated lowercase scene name in; non-blocking (server thread).</param>
+/// <param name="HandleAlertClear">
+/// <c>POST /v1/alerts/clear</c>: the alert id (<see langword="null"/>: the held warning) in, reply text
+/// out (server thread). <see langword="null"/> leaves the route off.
+/// </param>
 public sealed record HttpServerOptions(
     int Port, string Token, Func<string, string> HandleAlert, Func<string, bool> HandleSceneSwitch,
-    Action<string> Diagnostic);
+    Action<string> Diagnostic, Func<int?, string>? HandleAlertClear = null);
 
 /// <summary>
 /// The scene wallpaper's WebView2 layer, as the composition drives it. Production wraps

@@ -78,6 +78,86 @@ public sealed class AlertHttpProtocolTests
     public void StatusCodeFor_MapsTheHandlerReply(string reply, int expected) =>
         Assert.Equal(expected, AlertHttpProtocol.StatusCodeFor(reply));
 
+    /// <summary>H1: an accepted alert answers <c>ok id=&lt;n&gt;</c>; anything else after "ok" is unrecognised.</summary>
+    [Theory]
+    [InlineData("ok id=1", 202)]
+    [InlineData("ok id=42", 202)]
+    [InlineData("ok id=", 500)]
+    [InlineData("ok id=0", 500)]
+    [InlineData("ok id=01", 500)]
+    [InlineData("ok id=x", 500)]
+    [InlineData("ok id=1 ", 500)]
+    [InlineData("ok  id=1", 500)]
+    [InlineData("okid=1", 500)]
+    public void StatusCodeFor_AnAcceptedAlertWithItsId(string reply, int expected) =>
+        Assert.Equal(expected, AlertHttpProtocol.StatusCodeFor(reply));
+
+    [Fact]
+    public void FormatAccepted_WritesTheId()
+    {
+        Assert.Equal("ok id=7", AlertHttpProtocol.FormatAccepted(7));
+        Assert.True(AlertHttpProtocol.IsAccepted("ok id=7"));
+        Assert.True(AlertHttpProtocol.IsAccepted(AlertReplyProtocol.OkReply));
+        Assert.False(AlertHttpProtocol.IsAccepted("error: alerts are disabled"));
+    }
+
+    [Fact]
+    public void TryTranslate_DurationZero_IsPassedThroughForTheParser() =>
+        Assert.Equal("warning:1 duration:0", Translate("""{"warning":1,"duration":0}"""));
+
+    [Theory]
+    [InlineData("""{}""", null)]
+    [InlineData("""  { }  """, null)]
+    [InlineData("""{"id":1}""", 1)]
+    [InlineData("""{ "id" : 12 }""", 12)]
+    [InlineData("""{"id":2147483647}""", 2147483647)]
+    public void TryParseClear_EmptyOrAnId(string body, int? expected)
+    {
+        var ok = AlertHttpProtocol.TryParseClear(body, out var id, out var error);
+
+        Assert.True(ok, error);
+        Assert.Null(error);
+        Assert.Equal(expected, id);
+    }
+
+    [Theory]
+    [InlineData("", "body is not valid JSON")]
+    [InlineData("{", "body is not valid JSON")]
+    [InlineData("""{"\uD800":1}""", "body is not valid JSON")]
+    [InlineData("[1]", "body must be a JSON object")]
+    [InlineData("null", "body must be a JSON object")]
+    [InlineData("""{"warning":1}""", "unknown field 'warning'")]
+    [InlineData("""{"Id":1}""", "unknown field 'Id'")]
+    [InlineData("""{"id":0}""", "field 'id' must be a whole number >= 1")]
+    [InlineData("""{"id":-1}""", "field 'id' must be a whole number >= 1")]
+    [InlineData("""{"id":1.5}""", "field 'id' must be a whole number >= 1")]
+    [InlineData("""{"id":"1"}""", "field 'id' must be a whole number >= 1")]
+    [InlineData("""{"id":null}""", "field 'id' must be a whole number >= 1")]
+    [InlineData("""{"id":2147483648}""", "field 'id' must be a whole number >= 1")]
+    [InlineData("""{"id":1,"id":2}""", "field 'id' is repeated")]
+    public void TryParseClear_AnythingElse_FailsWithAShortReason(string body, string expected)
+    {
+        var ok = AlertHttpProtocol.TryParseClear(body, out var id, out var error);
+
+        Assert.False(ok);
+        Assert.Null(id);
+        Assert.Equal(expected, error);
+    }
+
+    [Fact]
+    public void TryParseClear_ANullBody_Fails()
+    {
+        Assert.False(AlertHttpProtocol.TryParseClear(null, out _, out var error));
+        Assert.Equal("body is not valid JSON", error);
+    }
+
+    [Fact]
+    public void ClearConstants_MatchCieLinux()
+    {
+        Assert.Equal("/v1/alerts/clear", AlertHttpProtocol.AlertsClearPath);
+        Assert.Equal(64, AlertHttpProtocol.ClearMaxBodyBytes);
+    }
+
     [Fact]
     public void Constants_MatchThePlan()
     {
