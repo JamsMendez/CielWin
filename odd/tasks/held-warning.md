@@ -31,13 +31,18 @@ Callers (the cielinux-scenes Claude Code plugin) keep a warning up while a quest
 ## Constraints
 
 - Test-first with the existing xUnit suites (`dotnet test CielWin.sln`).
-- Delivery strategy: `ask-on-risk`. Forecast ~600 authored lines (over the 400 budget): ask for a chain strategy
-  before slicing if the running count exceeds it.
+- Delivery strategy: `ask-on-risk` → user chose `feature-branch-chain`, all local: slices are commit ranges on
+  `feat/held-warning`, merged locally into `main` with `--no-ff` at the end; no PRs, no push (the user pushes `main`).
+- Slices: S1 = H1 (`14ff645..6cf8733`); S2 = H1b; S3 = H4.
 
 ## Tasks
 
 - [x] H1 Held warning API: parser, queue (ids, clear, hold max, preempt/resume), HTTP protocol + clear route,
       setting, diagnostics, tests. Route: delegated (writer trigger: 5+ non-trivial files).
+- [x] H1b Review advisories (R3, reliability): (a) a held warning preempted twice replays its sound on the second
+      resume (`AlertDriver` remembers only the last two sounded ids); (b) a held request accepted while another held
+      warning is suspended lets two held warnings coexist and a later failed request overwrites `_suspended` without a
+      diagnostic. Route: delegated (writer).
 - [ ] H4 Repeating held-warning sound in `AlertDriver` with driver tests. Route: delegated (same writer, separate commit).
 
 ## Acceptance criteria
@@ -58,4 +63,23 @@ H1 done (route: delegated writer).
 - H4 hook: `ActiveAlert.Id` is stable across re-show/resume, `StartedAt` resets on each show/resume, and
   `Command.IsHeld` marks a held warning; the driver sees a show/resume as the tick the displayed id changes.
 - Commit: `2e247ae` feat(alerts): add held warnings with clear route
+- RDD: medium, granted; 1-lens (reliability) review approved and acknowledged (lineage
+  `review-c6d462844bb67776`, authority burned); two non-blocking WARNING findings became H1b.
+- Running count: ~1300 changed lines after H1 (over the 400 budget); chain strategy chosen (local feature-branch chain).
+- Next: H1b, then H4.
+
+H1b done (route: delegated writer; R3 advisories from the H1 review).
+- (a) `AlertDriver` remembers the last sounded id plus the last sounded held id (`_soundedHeld`), replacing the
+  last-two-ids pair, so a held warning preempted any number of times never replays on resume, while one preempted
+  before it ever showed still sounds on its first show.
+- (b) `AlertQueue.Enqueue` ignores a held request while a held warning is suspended (`alert ignored: a held warning
+  is already suspended`, plain `202 ok`); with the existing showing/waiting rules at most one held warning is alive,
+  so `_suspended` is never overwritten. README *Held warning* documents both rules.
+- CieLinux `2f0e3e6` has the same two bugs (`announced`/`announcedBefore` pair; `enqueue` never checks `suspended`);
+  CielWin follows the documented rules here instead of mirroring them.
+- RED: 3 new tests failed (queue: held request accepted as id 3 instead of 0; resume returned id 3 instead of 1;
+  driver: sounds `[Warning, Failed, Failed, Warning]` instead of `[Warning, Failed, Failed]`).
+- GREEN: `dotnet build CielWin.sln` 0 errors / 0 warnings; `dotnet test CielWin.sln`: Interop.Tests 269 passed /
+  22 skipped / 0 failed; App.Tests 660 passed / 0 failed.
+- Commit: `a97697d` fix(alerts): keep one held warning and never replay its sound on resume
 - Next: H4.
