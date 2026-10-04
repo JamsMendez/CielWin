@@ -60,10 +60,11 @@ function createRenderStageReporter(logPrefix) {
 // readWallpaperFpsFromUrl() reuses alert-overlay.js's own parseParams() (loaded just before this
 // file -- see that file's own header remarks) rather than re-parsing location.hash/location.search a
 // second way: `fps` is just one more query/hash param on the same navigated URL (see
-// WebViewAlertLayerController.cs's own Navigate call, `.../index.html?fps=<30|60>`), read exactly
-// once at load (settings take effect at startup, like wallpaper-mode; D6d needs no live reload).
-// Anything other than the literal "30" keeps the default 60 -- including "60" itself, a missing
-// param, or garbage -- exactly like Settings.cs's own TryReadWallpaperFps treats anything other than
+// WebViewAlertLayerController.SceneUrl(scene, variant, fps), `.../index.html?fps=<30|60>`), read
+// exactly once at load (a tray change of the `frame-rate` setting replaces the surface, so the page
+// reloads with the new value). Anything other than the literal "30" keeps the default 60 --
+// including "60" itself, a missing param, or garbage -- matching the host, where SceneUrl only puts
+// 30 or 60 in the URL and the `frame-rate` setting (Settings.IsFrameRate) treats anything other than
 // exactly 30/60 as the default.
 function readWallpaperFpsFromUrl() {
   try {

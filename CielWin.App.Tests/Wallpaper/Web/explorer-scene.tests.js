@@ -733,19 +733,20 @@ test("the planet's flare is sized from the active basis, so mini keeps it propor
 
 // ---- S1 scene optimizations (odd/tasks/scene-optimizations.md, ported from CieLinux 4574b4a W1) ----
 // Every S1 change lives in marked blocks that only add lines; stripping them restores the pre-S1 sources,
-// which the tests below use as the byte-for-byte reference.
+// which the tests below use as the byte-for-byte reference. The pins hash LF-normalized text, so they hold on
+// CRLF and LF checkouts alike (they equal the LF blobs at 7ecdc79).
 var S1_BLOCKS = /^[ \t]*\/\/ Scene optimization begin \(S1\)[^\n]*\n[\s\S]*?^[ \t]*\/\/ Scene optimization end \(S1\)\.\r?\n(\r?\n(?=\/\/|function|const|let))?/gm;
 function stripS1(text) { return text.replace(S1_BLOCKS, ""); }
 function sha256(text) { return require("crypto").createHash("sha256").update(text).digest("hex"); }
 
 test("S1 blocks only add lines: stripping them restores the pre-S1 sources", function () {
   var PRE_S1 = {
-    "js/earth.js": "5f5833ecd07175bb85a34f18afc4dd5dc9d207074179379a23093f664b8535ab",
-    "js/rings.js": "67ccf7cd25b36f09803b4bbd1b39005529b11a2f2c9c1fc67e2ed1d220a85791",
-    "js/rising-sparks.js": "e008f30d7c250438e553903426a25a90932fa297d207bf5c7789b332389000de"
+    "js/earth.js": "2323c5bdee8cdf36871a6ac77990e6ed1c36998e0faa631283271b6b64877536",
+    "js/rings.js": "085d434f797d114b3084988494e37e9aaf9939cf1100dd0a3f19ecd1f9e6962b",
+    "js/rising-sparks.js": "8103d08efe541a6853bd63f35961137a18f009273821ed40d995667c44a9d39a"
   };
   Object.keys(PRE_S1).forEach(function (name) {
-    var text = fs.readFileSync(path.join(sceneDir, name), "utf8");
+    var text = fs.readFileSync(path.join(sceneDir, name), "utf8").replace(/\r\n/g, "\n"); // checkout-independent
     assert.match(text, /^[ \t]*\/\/ Scene optimization begin \(S1\)/m, name + " marks S1");
     assert.strictEqual(sha256(stripS1(text)), PRE_S1[name], name);
   });
@@ -754,20 +755,32 @@ test("S1 blocks only add lines: stripping them restores the pre-S1 sources", fun
 // The equirect bake is grayscale, so the fast path computes each texel once with the reference expressions
 // and writes one 32-bit word. The reference is the pre-S1 renderEarthFrame, evaluated in the same sandbox
 // (one page load; earth.js's bake costs seconds per vm realm) against the same lookups and ImageData.
-test("earth: the grayscale fast path writes the reference bytes with no per-pixel Math calls", function () {
+// One shared page for the S1 earth/vignette tests: a fresh realm re-runs the multi-second earth bake.
+var s1Page = null;
+function s1EarthPage() {
+  if (s1Page !== null) return s1Page;
   var page = loadPage({ innerWidth: 1000, innerHeight: 500 });
-  var run = function (code) { return vm.runInContext(code, page.sandbox); };
-  assert.strictEqual(run("EARTH_EQUIRECT_GRAY !== null && EARTH_LITTLE_ENDIAN"), true,
-    "the equirect bake is grayscale and the fast path is active");
   var source = stripS1(fs.readFileSync(path.join(sceneDir, "js", "earth.js"), "utf8"));
   var reference = source.match(/^function renderEarthFrame\([\s\S]*?^}/m);
   assert.ok(reference, "reference renderEarthFrame found");
-  run(reference[0].replace("function renderEarthFrame(", "function renderEarthFrameReference("));
-  var frame = function (fn, size, longitude) {
-    if (run("earthFrameImageData") !== null && run("earthDiscLookupSize") === size) run("earthFrameImageData.data.fill(0)");
-    page.sandbox[fn](size, longitude);
-    return Buffer.from(run("earthFrameImageData.data"));
-  };
+  vm.runInContext(reference[0].replace("function renderEarthFrame(", "function renderEarthFrameReference("), page.sandbox);
+  s1Page = page;
+  return page;
+}
+
+function earthFrameBytes(page, fn, size, longitude) {
+  var run = function (code) { return vm.runInContext(code, page.sandbox); };
+  if (run("earthFrameImageData") !== null && run("earthDiscLookupSize") === size) run("earthFrameImageData.data.fill(0)");
+  page.sandbox[fn](size, longitude);
+  return Buffer.from(run("earthFrameImageData.data"));
+}
+
+test("earth: the grayscale fast path writes the reference bytes with no per-pixel Math calls", function () {
+  var page = s1EarthPage();
+  var run = function (code) { return vm.runInContext(code, page.sandbox); };
+  assert.strictEqual(run("EARTH_EQUIRECT_GRAY !== null && EARTH_LITTLE_ENDIAN"), true,
+    "the equirect bake is grayscale and the fast path is active");
+  var frame = function (fn, size, longitude) { return earthFrameBytes(page, fn, size, longitude); };
   var sizes = [64, 109, 33, 241, 64];
   var longitudes = [0, 0.002, 1.3, -2.2, 100.7, 4.8 * Math.PI / 180 * 3600, 4.8 * Math.PI / 180 * 86400.37];
   sizes.forEach(function (size) {
@@ -785,6 +798,60 @@ test("earth: the grayscale fast path writes the reference bytes with no per-pixe
   });
   try { page.sandbox.renderEarthFrame(64, 0.5); } finally { Object.assign(MathObject, saved); }
   assert.strictEqual(calls, 0, calls + " Math.round/min/max calls per frame (reference: ~5 per inside pixel)");
+});
+
+// The S1 renderEarthFrame, re-evaluated with one of the fast-path guards shadowed (a color bake, a
+// big-endian host), must take the reference loop and write the reference bytes.
+test("earth: the fallback path (no grayscale bake, or big-endian) writes the reference bytes", function () {
+  var page = s1EarthPage();
+  var current = fs.readFileSync(path.join(sceneDir, "js", "earth.js"), "utf8").match(/^function renderEarthFrame\([\s\S]*?^}/m);
+  assert.ok(current && current[0].indexOf("EARTH_EQUIRECT_GRAY !== null && EARTH_LITTLE_ENDIAN") >= 0, "S1 guard found");
+  var forced = { renderEarthFrameNoGray: "const EARTH_EQUIRECT_GRAY = null;", renderEarthFrameBigEndian: "const EARTH_LITTLE_ENDIAN = false;" };
+  Object.keys(forced).forEach(function (name) {
+    vm.runInContext("var " + name + " = (function () { " + forced[name] + " return " + current[0] + "; })();", page.sandbox);
+  });
+  var fastPath = page.sandbox.renderEarthGrayPixels;
+  var fastPathCalls = 0;
+  page.sandbox.renderEarthGrayPixels = function () { fastPathCalls++; return fastPath.apply(this, arguments); };
+  try {
+    Object.keys(forced).forEach(function (name) {
+      [64, 109, 33].forEach(function (size) {
+        [0, 1.3, -2.2].forEach(function (longitude) {
+          var expected = earthFrameBytes(page, "renderEarthFrameReference", size, longitude);
+          var actual = earthFrameBytes(page, name, size, longitude);
+          assert.strictEqual(Buffer.compare(actual, expected), 0, name + ", size " + size + ", longitude " + longitude);
+        });
+      });
+    });
+  } finally {
+    page.sandbox.renderEarthGrayPixels = fastPath;
+  }
+  assert.strictEqual(fastPathCalls, 0, "the fallback never enters the grayscale fast path");
+});
+
+// A gradient that fails to build must not leave a dangling save(): the failing frame is caught by the render
+// loop, and an unbalanced save would grow the canvas state stack on every failing frame.
+test("vignette: a throwing createRadialGradient leaves save/restore balanced, and the next frame fills", function () {
+  var page = s1EarthPage();
+  var throws = 1;
+  var saves = 0;
+  var restores = 0;
+  var fills = 0;
+  var context = {
+    save: function () { saves++; },
+    restore: function () { restores++; },
+    fillRect: function () { fills++; },
+    createRadialGradient: function () {
+      if (throws > 0) { throws--; throw new Error("createRadialGradient failed"); }
+      return { addColorStop: function () {} };
+    },
+  };
+  assert.throws(function () { page.sandbox.drawVignette(context); }, /createRadialGradient failed/);
+  assert.strictEqual(saves, restores, "balanced after the failing frame (" + saves + " saves, " + restores + " restores)");
+  assert.strictEqual(fills, 0, "nothing filled on the failing frame");
+  page.sandbox.drawVignette(context);
+  assert.strictEqual(saves, restores, "balanced after the next frame");
+  assert.strictEqual(fills, 1, "the next frame fills the vignette");
 });
 
 // The vignette gradient only depends on (context, W, H): created once per geometry, filled every frame.
