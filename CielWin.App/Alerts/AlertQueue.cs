@@ -53,7 +53,9 @@ public sealed record ActiveAlert(AlertCommand Command, DateTimeOffset StartedAt,
 /// request while a timed alert shows waits for it. A request with any failed tile while a held
 /// warning shows or waits PREEMPTS it: the held warning is suspended and comes back, same id, for the
 /// rest of its hold once nothing else shows or waits. So besides the single slot there is at most one
-/// more alert, a suspended held one. <see cref="Clear"/> removes an alert by id, or the held one.
+/// more alert, a suspended held one. At most one held warning is ever alive: a held request while one
+/// shows, waits or is suspended is ignored, so a failed request only ever suspends that one and never
+/// overwrites another. <see cref="Clear"/> removes an alert by id, or the held one.
 /// </para>
 /// <para>
 /// NOT thread-safe: <see cref="Enqueue"/>, <see cref="Clear"/> and <see cref="Advance"/> all read and
@@ -119,8 +121,8 @@ public sealed class AlertQueue
     /// Queues <paramref name="command"/>, unless an alert is already showing or waiting at
     /// <paramref name="now"/>, in which case the request is IGNORED: reported through
     /// <see cref="_onDiagnostic"/> and dropped. Two exceptions to the busy rule: a held request waits
-    /// behind a showing timed alert, and a request with a failed tile preempts a showing or waiting
-    /// held warning, suspending it.
+    /// behind a showing timed alert (unless a held warning is already suspended), and a request with a
+    /// failed tile preempts a showing or waiting held warning, suspending it.
     /// </summary>
     /// <returns>The request's id (1, 2, ... per queue) when it was queued; 0 when it was ignored.</returns>
     /// <remarks>
@@ -131,6 +133,14 @@ public sealed class AlertQueue
     public long Enqueue(AlertCommand command, DateTimeOffset now)
     {
         DropExpired(now);
+
+        if (command.IsHeld && _suspended is not null)
+        {
+            // At most one held warning is alive: the suspended one still comes back, so a second one
+            // would coexist with it, and a later failed request would have two to suspend.
+            _onDiagnostic("alert ignored: a held warning is already suspended");
+            return 0;
+        }
 
         if (_current is { } active && now < active.EndsAt)
         {

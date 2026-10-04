@@ -245,10 +245,13 @@ for an answer. It is accepted with `warning` only; with any `failed` the answer 
   by that deadline or the 5-minute start limit, whichever comes first.
 - A request with any failed tile while a held warning shows (or waits) is shown at once, for its
   own duration, with its sound. The held warning is suspended and comes back when the failed alert
-  ends, for the rest of its hold, with the same id and without replaying its sound. If it was
-  cleared or passed its hold max meanwhile, it does not come back.
+  ends, for the rest of its hold, with the same id and without replaying its sound, however many
+  times it is preempted. One preempted before it ever showed plays its sound when it first shows.
+  If it was cleared or passed its hold max meanwhile, it does not come back.
 - A warning while a held warning shows is ignored as usual. A held warning sent while a timed alert
   shows waits and starts when that one ends.
+- At most one held warning exists at a time: a held warning sent while another one shows, waits or
+  is suspended is ignored (plain `202 ok`, no id).
 
 ### Clear an alert: `POST /v1/alerts/clear`
 

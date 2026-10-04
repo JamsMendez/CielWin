@@ -169,6 +169,51 @@ public sealed class AlertQueueHeldWarningTests
     }
 
     [Fact]
+    public void AHeldRequestWhileAnotherHeldWarningIsSuspended_IsIgnored_SoOnlyOneIsEverAlive()
+    {
+        var queue = Create();
+        queue.Enqueue(Parse("warning:1 duration:0"), At(0));
+        queue.Advance(At(0), desktopVisible: true);
+        queue.Enqueue(Parse("failed:1 duration:2"), At(1000));
+        AssertActive(queue.Advance(At(1000), desktopVisible: true), 2, 1000, 3000);
+
+        Assert.Equal(0, queue.Enqueue(Parse("warning:1 duration:0"), At(1500)));
+        AssertActive(queue.Advance(At(3000), desktopVisible: true), 1, 3000, 600000);
+        Assert.Null(queue.Advance(At(600000), desktopVisible: true));
+
+        Assert.Equal(
+            [
+                "alert 1 suspended: a failed alert preempts it",
+                "alert ignored: a held warning is already suspended",
+            ],
+            _diagnostics);
+    }
+
+    [Fact]
+    public void AFailedRequestAfterAnIgnoredHeldOne_PreemptsTheSameHeldWarningAgain_WhichStillResumes()
+    {
+        var queue = Create();
+        queue.Enqueue(Parse("warning:1 duration:0"), At(0));
+        queue.Advance(At(0), desktopVisible: true);
+        queue.Enqueue(Parse("failed:1 duration:2"), At(1000));
+        queue.Advance(At(1000), desktopVisible: true);
+        queue.Enqueue(Parse("warning:1 duration:0"), At(1500));
+        AssertActive(queue.Advance(At(3000), desktopVisible: true), 1, 3000, 600000);
+
+        Assert.Equal(3, queue.Enqueue(Parse("failed:1 duration:2"), At(4000)));
+        AssertActive(queue.Advance(At(4000), desktopVisible: true), 3, 4000, 6000);
+        AssertActive(queue.Advance(At(6000), desktopVisible: true), 1, 6000, 600000);
+
+        Assert.Equal(
+            [
+                "alert 1 suspended: a failed alert preempts it",
+                "alert ignored: a held warning is already suspended",
+                "alert 1 suspended: a failed alert preempts it",
+            ],
+            _diagnostics);
+    }
+
+    [Fact]
     public void AHeldRequestDuringATimedAlert_WaitsForIt_AndASecondOneIsIgnored()
     {
         var queue = Create();
