@@ -117,9 +117,39 @@ function drawBlueRingTint(context) {
   context.restore();
 }
 
+// Scene optimization begin (S1): odd/tasks/scene-optimizations.md (ported from CieLinux W1). The blue layer's
+// glow gradient only depends on (W, H, cx, cy); it is created once per (context, geometry) and reused, like the
+// vignette's (rings.js cachedVignetteGradient).
+let blueLayerGlowCache = { context: null, width: -1, height: -1, cx: NaN, cy: NaN, gradient: null };
+
+function cachedBlueLayerGlow(context, cx, cy) {
+  const cache = blueLayerGlowCache;
+  if (cache.context === context && cache.width === W && cache.height === H && cache.cx === cx && cache.cy === cy) return cache.gradient;
+  const radius = Math.max(W, H) * BLUE_LAYER_GLOW_RADIUS_FRACTION;
+  const glow = context.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  glow.addColorStop(0, BLUE_LAYER_GLOW_COLOR);
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  blueLayerGlowCache = { context, width: W, height: H, cx, cy, gradient: glow };
+  return glow;
+}
+// Scene optimization end (S1).
+
 // Blue wash over the finished monochrome composition: 'color' keeps each pixel's luminance but
 // takes the tint's hue/saturation, then a centered 'screen' glow brightens the middle.
 function drawBlueLayer(context, cx, cy) {
+  // Scene optimization begin (S1): cached glow gradient (see cachedBlueLayerGlow).
+  if (typeof context.createRadialGradient === 'function') {
+    context.save();
+    context.globalCompositeOperation = 'color';
+    context.fillStyle = BLUE_LAYER_TINT_COLOR;
+    context.fillRect(0, 0, W, H);
+    context.globalCompositeOperation = 'screen';
+    context.fillStyle = cachedBlueLayerGlow(context, cx, cy);
+    context.fillRect(0, 0, W, H);
+    context.restore();
+    return;
+  }
+  // Scene optimization end (S1).
   context.save();
   context.globalCompositeOperation = 'color';
   context.fillStyle = BLUE_LAYER_TINT_COLOR;
