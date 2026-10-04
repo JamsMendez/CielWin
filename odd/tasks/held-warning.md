@@ -43,7 +43,7 @@ Callers (the cielinux-scenes Claude Code plugin) keep a warning up while a quest
       resume (`AlertDriver` remembers only the last two sounded ids); (b) a held request accepted while another held
       warning is suspended lets two held warnings coexist and a later failed request overwrites `_suspended` without a
       diagnostic. Route: delegated (writer).
-- [ ] H4 Repeating held-warning sound in `AlertDriver` with driver tests. Route: delegated (same writer, separate commit).
+- [x] H4 Repeating held-warning sound in `AlertDriver` with driver tests. Route: delegated (same writer, separate commit).
 
 ## Acceptance criteria
 
@@ -83,3 +83,25 @@ H1b done (route: delegated writer; R3 advisories from the H1 review).
   22 skipped / 0 failed; App.Tests 660 passed / 0 failed.
 - Commit: `a97697d` fix(alerts): keep one held warning and never replay its sound on resume
 - Next: H4.
+- H1b RDD assess (base `6cf8733`): medium, 137 lines, `review_due=false` (`under_budget`); stays pending in the slice with H4.
+
+H4 done (route: delegated writer, separate commit).
+- `AlertDriver` keeps `_repeatAt` on the existing UI tick (no new timer): set to show/resume time + 5 s
+  (`HeldWarningRepeat`) when a held warning starts; on each tick with the same displayed held id it is reset while the
+  surface is not visible (covered), re-armed a full period later when visible again, and on reaching it plays
+  `Warning` if `soundsEnabled()` at that moment (mute read per repeat, no trace when muted) and re-arms. Cleared by any
+  displayed-id change, a null surface and `SurfaceReplaced` (a re-show restarts the cadence, plays nothing).
+  Throwing player traced via the shared `TryPlay`. Timed alerts never repeat.
+- Tests: 9 `H4_*` facts in `AlertDriverHeldWarningTests` (repeat until clear, hold max, timed once, suspended +
+  resume restart, covered + uncover restart, waiting while covered, surface replace restart, mute at repeat time,
+  throwing player) and 1 theory (2 cases) in `AlertDriverSoundTests` mirroring CieLinux's "no extra clock read"
+  stepping-clock case (598000 ms show; no repeat after 5 updates, one after 6). README *Held warning* and the sound
+  section state the 5 s exception.
+- Deviations from CieLinux: none in behavior; a null surface also stops the cadence; tests added for surface replace,
+  mute, and throwing player (CieLinux covers mute in the sounds unit test).
+- RED: 8 of the new held-warning tests failed (e.g. sounds `[Warning]` instead of `[Warning, Warning, Warning]`);
+  the timed-once test passed as expected.
+- GREEN: `dotnet build CielWin.sln` 0 errors / 0 warnings; `dotnet test CielWin.sln`: Interop.Tests 269 passed /
+  22 skipped / 0 failed; App.Tests 671 passed / 0 failed.
+- Commit: `a8b8364` feat(alerts): repeat the held warning sound every 5 seconds
+- Next: RDD assess of the S2+S3 slice (base `6cf8733`), then local `--no-ff` merge into `main`.
