@@ -53,6 +53,8 @@ measurement, so GPU-bound wins are unproven on WebView2.
   - [x] S4c spark atlas (adapted, CielWin lacks the mini O1–O3 base) — implemented, pending Windows measurement
     and user visual approval. Route: delegated (writer: rising-sparks.js + new check module + explorer harness).
     Commit: `ae8b482`.
+  - [x] S4d Review advisories on S4b/S4c (2 WARNINGs + 1 SUGGESTION; appearance unchanged on the normal path).
+    Route: delegated (writer: rising-sparks.js + alert-overlay.js + 2 check modules). Commit: `d377f89`.
 
 ## Acceptance criteria
 
@@ -234,3 +236,28 @@ approval; then S4c.
 
 Next: S4c needs the Windows explorer draws/s + CPU measurement (S2 probe) and the user's live visual approval.
 - S4c measured (ae8b482 via worktree at 45f63a7, Release, 1 pass): explorer 60 draws/s ~57% CPU (was ~94% after S4b, 128–147% baseline); explorer+warning 60 ~62% (was ~103%, ~218% baseline); idle 60 ~44%. User approved S4c appearance live (explorer sparks, 2026-10-04).
+
+- S4d done (`d377f89`; review advisories on S4b/S4c; all edits inside the S4b/S4c blocks, both pins unchanged).
+  The normal path draws exactly as before; only the failure paths changed.
+  - WARNING S4c atlas: its area grows with (H x DPR)^2 (4032x552 at 3440x1440@1, 3996x1863 at 2560x1440@1.5) and
+    a failed bake threw every frame (no cache), allocating a new canvas each time and drawing no sparks. Now a
+    geometry whose atlas would exceed 16384 px a side or 2^25 px, or whose bake fails (null context, exception),
+    is remembered (one attempt per geometry, one console.warn) and draws the reference strokes (pre-S4c stream).
+  - WARNING S4b direct backdrop: producer and consumer now share `failureDirectBackdropKey`; a miss no longer
+    downscales the live canvas but the reference whole-canvas snapshot (once that frame), and the overlay keeps the
+    snapshot path (taken before any tile draws) until it stops. The miss frame's snapshot is taken at the first
+    pixelating tile, before that tile draws; only earlier tiles (disjoint rects) can have drawn by then. No miss was
+    reachable in the tests (current derivations already matched).
+  - SUGGESTION S4b spark layer: test only. The scene context holds exactly the plain scene scale and alpha 1 where
+    the layer is drawn and stamped (the state the reference sparks inherited), and the layer draws in that transform.
+  - Tests: `rising-spark-atlas.checks.js` (null and throwing context at two geometries: reference stream, 1 attempt,
+    no atlas, later full frames create no canvas and log no error, a working geometry bakes again; 7680x4320@2 and
+    2160x12000@1 not baked, reference stream, no canvas). `alert-overlay-cache.checks.js` (DPR 1.25/1.5, gaps 5-9,
+    2-4 tiles incl. warning tiles and a 2x2 grid with fractional device rects: every failed tile upscales its
+    prepared bitmap, no fallback downscale, no miss; forced miss: one snapshot copy, both tiles from the snapshot,
+    next frame snapshot-only, reset on hide, direct again on the next alert; scene-state replay at the spark layer).
+  - RED: processing S4d 0/2 (miss read the live canvas: no snapshot copy; `failureDirectBackdropMissed` undefined),
+    explorer S4d 0/2 (null context: TypeError in the bake; oversize: atlas stamps instead of the reference stream);
+    the spark-layer state check passed on the unchanged animate.js. GREEN: processing 60/60, explorer 42/42, idle
+    28/28, raphael 34/34. `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test CielWin.sln`: Interop 269
+    passed / 22 skipped, App 716 passed / 0 failed.
