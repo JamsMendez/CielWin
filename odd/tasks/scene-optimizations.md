@@ -194,3 +194,4 @@ approval; then S4c.
   - RED capability (scratch copy with a per-call random ray alpha): processing 3009, raphael 3019 entries — FAIL.
     GREEN: processing 58/58, raphael 34/34. `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test
     CielWin.sln`: Interop 269 passed / 22 skipped, App 716 passed / 0 failed.
+- S4b measured (e055fd2 via worktree at 9e58537, Release, 1 pass): explorer+warning 60 draws/s, ~103% CPU (was ~184% after S4a, ~218% baseline); processing 55.8, raphael 60 ~101%, explorer 60 ~94%, idle 60 ~54%. User approved S4b appearance live (explorer + held warning, 2026-10-04).
