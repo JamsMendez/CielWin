@@ -36,10 +36,14 @@ public sealed class CompositionHost
     /// <summary>The thread that owns one wallpaper host: attach, re-attach and dispose run on it.</summary>
     public required Func<IWallpaperThread> CreateWallpaperThread { get; init; }
 
-    /// <summary>The WebView2 scene layer rendering into the wallpaper host's overlay visual.</summary>
-    public required Func<ICompositionOverlaySurface, WallpaperScene, ISceneLayer> CreateSceneLayer { get; init; }
+    /// <summary>
+    /// The WebView2 scene layer rendering into the wallpaper host's overlay visual, at the given
+    /// frame-rate cap (<see cref="Settings.FrameRate"/>).
+    /// </summary>
+    public required Func<ICompositionOverlaySurface, WallpaperScene, int, ISceneLayer> CreateSceneLayer { get; init; }
 
-    public required Func<IMiniSceneWindow> CreateMiniWindow { get; init; }
+    /// <summary>The mini scene window, its page at the given frame-rate cap (<see cref="Settings.FrameRate"/>).</summary>
+    public required Func<int, IMiniSceneWindow> CreateMiniWindow { get; init; }
 
     /// <summary>The HTTP bearer token, or <see langword="null"/> when it cannot be read or created.</summary>
     public required Func<string?> LoadHttpToken { get; init; }

@@ -530,6 +530,54 @@ let animationStartMs = null;
 // documented no-op, scheduleFrame always running last, unconditionally).
 const reportRenderError = createRenderStageReporter("[explorer-scene]");
 
+// Scene optimization begin (S4b): odd/tasks/scene-optimizations.md, ported from CieLinux 4574b4a W4. While an
+// alert tile shows its see-through layer (alertSeeThroughExpected, shared/js/alert-overlay.js) the full scene draws
+// its rising sparks into a canvas-sized layer and composites it additively ('lighter', the sparks' own operator:
+// additions onto transparent pixels, then onto the canvas, sum to the same clamped values); the overlay then blits
+// that layer into the letters' bands (sceneSeeThroughFrameLayer) instead of running the see-through hook's second
+// drawRisingSparks pass. Mini and frames without a see-through alert keep drawing the sparks straight onto the canvas.
+var seeThroughSparkLayer = null;
+var seeThroughSparkLayerReady = false;
+var seeThroughSparkLayerTime = 0;
+
+function drawRisingSparksThroughLayer(timeSeconds) {
+  if (isMiniVariant || typeof alertSeeThroughExpected !== 'function' || !alertSeeThroughExpected()) {
+    if (seeThroughSparkLayer && !(typeof animating !== 'undefined' && animating)) {
+      seeThroughSparkLayer.canvas.width = 0;
+      seeThroughSparkLayer.canvas.height = 0;
+      seeThroughSparkLayer = null;
+    }
+    return false;
+  }
+  if (!seeThroughSparkLayer) {
+    const layerCanvas = document.createElement('canvas');
+    seeThroughSparkLayer = { canvas: layerCanvas, g: layerCanvas.getContext('2d') };
+  }
+  const layer = seeThroughSparkLayer;
+  if (layer.canvas.width !== canvas.width || layer.canvas.height !== canvas.height) {
+    layer.canvas.width = canvas.width;
+    layer.canvas.height = canvas.height;
+  }
+  layer.g.setTransform(1, 0, 0, 1, 0, 0);
+  layer.g.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+  layer.g.setTransform(canvasScaleX, 0, 0, canvasScaleY, 0, 0);
+  drawRisingSparks(layer.g, timeSeconds);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(layer.canvas, 0, 0);
+  ctx.restore();
+  seeThroughSparkLayerReady = true;
+  seeThroughSparkLayerTime = timeSeconds;
+  return true;
+}
+
+function sceneSeeThroughFrameLayer(sceneTime) {
+  return seeThroughSparkLayerReady && sceneTime === seeThroughSparkLayerTime ? seeThroughSparkLayer.canvas : null;
+}
+// Scene optimization end (S4b).
+
 function renderFrame(nowMs) {
   // `timeSeconds` is a safe, cheap default for the value the alert overlay call needs below: if
   // alertSceneMs() itself throws (see the try block below), the overlay must still receive SOMETHING
@@ -538,6 +586,9 @@ function renderFrame(nowMs) {
   let timeSeconds = 0;
 
   try {
+    // Scene optimization begin (S4b): the spark layer is valid only once this frame has drawn it.
+    seeThroughSparkLayerReady = false;
+    // Scene optimization end (S4b).
     // alertSceneMs (shared/js/alert-overlay.js) freezes this scene's own clock while a FAILED tile is
     // shaking (same effect CielWin.App/Wallpaper/Web/processing/js/main.js's render() gets from it)
     // and drives that tile's per-frame shake wobble; it returns `nowMs` unchanged whenever no kind is
@@ -608,6 +659,9 @@ function renderFrame(nowMs) {
     // on top so they stay white instead of being tinted along with everything else. Mini tints only
     // the ring's own pixels (drawBlueRingTint), never the transparent canvas around it.
     if (!isMiniVariant) drawBlueLayer(ctx, cx, cy);
+    // Scene optimization begin (S4b): see drawRisingSparksThroughLayer.
+    if (!drawRisingSparksThroughLayer(timeSeconds))
+    // Scene optimization end (S4b).
     drawRisingSparks(ctx, timeSeconds);
     if (!isMiniVariant) drawVignette(ctx);
     // Mini: occlude the background under the ring bands, then fade everything out before the window edges

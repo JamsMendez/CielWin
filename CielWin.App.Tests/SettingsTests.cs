@@ -272,6 +272,50 @@ public sealed class SettingsTests
     }
 
     [Fact]
+    public void FrameRate_DefaultsToSixty() =>
+        Assert.Equal(60, Settings.Parse(string.Empty).FrameRate);
+
+    [Theory]
+    [InlineData("frame-rate = 30", 30)]
+    [InlineData("frame-rate=60", 60)]
+    [InlineData("  FRAME-RATE  =  30 ", 30)]
+    public void FrameRateIsRead_HoweverTheLineIsSpelled(string line, int expected)
+    {
+        Assert.Equal(expected, Settings.Parse(line).FrameRate);
+    }
+
+    [Theory]
+    [InlineData("frame-rate = 0")]
+    [InlineData("frame-rate = 45")]
+    [InlineData("frame-rate = 120")]
+    [InlineData("frame-rate = -30")]
+    [InlineData("frame-rate = 30.0")]
+    [InlineData("frame-rate = 30fps")]
+    [InlineData("frame-rate =")]
+    public void AnInvalidFrameRate_KeepsTheDefault(string line)
+    {
+        Assert.Equal(60, Settings.Parse(line).FrameRate);
+    }
+
+    [Fact]
+    public void AnInvalidFrameRate_KeepsAnEarlierValidOne()
+    {
+        Assert.Equal(30, Settings.Parse("frame-rate = 30\nframe-rate = 45\n").FrameRate);
+    }
+
+    [Theory]
+    [InlineData(30, true)]
+    [InlineData(60, true)]
+    [InlineData(0, false)]
+    [InlineData(59, false)]
+    [InlineData(120, false)]
+    public void OnlyThirtyAndSixtyAreFrameRates(int fps, bool expected)
+    {
+        Assert.Equal(expected, Settings.IsFrameRate(fps));
+        Assert.Equal([30, 60], Settings.FrameRates);
+    }
+
+    [Fact]
     public void LegacyAlertHttpKeys_AreStillRead_ButTheNewKeysWinInEitherOrder()
     {
         var legacy = Settings.Parse("alert-http = off\nalert-http-port = 9000\n");
@@ -414,7 +458,8 @@ public sealed class SettingsTests
             WallpaperScene: WallpaperScene.Raphael,
             MiniPosition: MiniPosition.LeftCenter,
             AlertSoundsEnabled: false,
-            AlertHoldMaxSeconds: 90);
+            AlertHoldMaxSeconds: 90,
+            FrameRate: 30);
 
         Assert.Equal(original, Settings.Parse(original.Serialize()));
     }
@@ -453,7 +498,7 @@ public sealed class SettingsTests
             .Select(line => line[..line.IndexOf('=')].Trim())
             .ToArray();
 
-        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "mini-position", "alert-sounds", "failed-sound", "warning-sound", "alert-hold-max-seconds"], keys);
+        Assert.Equal(["wallpaper-mode", "http-server", "http-server-port", "scene", "frame-rate", "mini-position", "alert-sounds", "failed-sound", "warning-sound", "alert-hold-max-seconds"], keys);
         Assert.StartsWith("# CielWin settings", text, StringComparison.Ordinal);
         Assert.DoesNotContain("CosmicWin", text, StringComparison.Ordinal);
         Assert.DoesNotContain("wallpaper-scene", text, StringComparison.Ordinal);

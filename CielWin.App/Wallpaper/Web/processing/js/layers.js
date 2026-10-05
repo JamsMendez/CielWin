@@ -15,6 +15,9 @@
 // A path with moveTo/lineTo pairs preserves independent segments while sharing one shadowed stroke.
 function drawGlowSegments(segments, width, alpha, blur = 8) {
   if (segments.length === 0) return;
+  // Scene optimization begin (S4a): see drawWallpaperGlowSegments.
+  if (!isMiniVariant && drawWallpaperGlowSegments(segments, width, alpha, blur)) return;
+  // Scene optimization end (S4a).
   ctx.save();
   ctx.strokeStyle = `rgba(${CENTRAL_RAY_STROKE_COLOR},${alpha})`;
   ctx.lineWidth = structurePx(width, 0.5);
@@ -29,6 +32,119 @@ function drawGlowSegments(segments, width, alpha, blur = 8) {
   ctx.stroke();
   ctx.restore();
 }
+
+// Scene optimization begin (S4a): odd/tasks/scene-optimizations.md (ported from CieLinux dcc933b PERF-5). The
+// wallpaper stamps every segment's baked shadow (sprites.js, wallpaperLineGlow) and strokes the segments
+// unshadowed, in the reference order and composite operation; the mini keeps the shadowed stroke above.
+function drawWallpaperGlowSegments(segments, width, alpha, blur) {
+  const strokeStyle = `rgba(${CENTRAL_RAY_STROKE_COLOR},${alpha})`;
+  const lineWidth = structurePx(width, 0.5);
+  const glow = wallpaperLineGlow(lineWidth, strokeStyle, 'round', CENTRAL_RAY_GLOW_COLOR, structurePx(blur, 1));
+  if (!glow) return false;
+  const coords = wallpaperSegmentBuffer(segments.length);
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    for (let j = 0; j < 4; j++) coords[4 * i + j] = segment[j];
+  }
+  ctx.save();
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  stampWallpaperLineGlows(glow, coords, 0, segments.length);
+  ctx.beginPath();
+  for (const [x1, y1, x2, y2] of segments) {
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+  }
+  ctx.stroke();
+  ctx.restore();
+  return true;
+}
+
+// The folding band outline (drawFoldingBand) as segments: the left edge, the bar to the right edge, the right
+// edge and the closing bar back. The two bars coincide on a closed band (the first and last points are the
+// same angle), so the closing one is then left out: the reference strokes them as one path, whose shadow blurs
+// their union once. Butt caps: the closed outline has no caps, and butt-capped slices tile into the shadow of
+// the joined polyline.
+function strokeWallpaperFoldingBandOutline(points, width) {
+  const outlineWidth = Math.max(structurePx(1.15, 0.5), width * 0.11);
+  const glow = wallpaperLineGlow(outlineWidth, 'rgb(255,255,255)', 'butt', 'rgba(255,255,255,0.78)', structurePx(12, 1));
+  if (!glow) return false;
+  const last = points.length - 1;
+  const coords = wallpaperSegmentBuffer(2 * points.length);
+  let n = 0;
+  const push = (a, b) => {
+    const o = 4 * n++;
+    coords[o] = a[0];
+    coords[o + 1] = a[1];
+    coords[o + 2] = b[0];
+    coords[o + 3] = b[1];
+  };
+  for (let i = 0; i < last; i++) push(points[i].left, points[i + 1].left);
+  push(points[last].left, points[0].right);
+  for (let i = 0; i < last; i++) push(points[i].right, points[i + 1].right);
+  const same = Math.max(Math.abs(points[last].right[0] - points[0].right[0]), Math.abs(points[last].right[1] - points[0].right[1]),
+    Math.abs(points[0].left[0] - points[last].left[0]), Math.abs(points[0].left[1] - points[last].left[1])) < 1e-6;
+  if (!same) push(points[last].right, points[0].left);
+  stampWallpaperLineGlows(glow, coords, 0, n);
+  ctx.lineWidth = outlineWidth;
+  ctx.strokeStyle = 'rgb(255,255,255)';
+  ctx.beginPath();
+  ctx.moveTo(points[0].left[0], points[0].left[1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].left[0], points[i].left[1]);
+  for (let i = 0; i < points.length; i++) ctx.lineTo(points[i].right[0], points[i].right[1]);
+  ctx.closePath();
+  ctx.stroke();
+  return true;
+}
+
+// The octagon's glow from baked pulse levels (sprites.js, wallpaperPulseGlows: the reference stroke and shadow
+// of the regular octagon at rotation 0, under the ctx rotation). The pulse wobble (at most 2.5% of the radius,
+// inside a 20-38 px blur) moves the stroke only, not its baked glow.
+function stampWallpaperOctagonGlow(r, pulse) {
+  const glow = wallpaperPulseGlows(`octagon|${r}`, (level, scale) => {
+    const lineWidth = CENTRAL_OCTAGON_STROKE_PX * (1 + level * 0.72);
+    return bakeShadowLayer(r + lineWidth, r + lineWidth, scale, 'rgba(255,255,245,0.90)', 20 + level * 18, (g) => {
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(255,255,244,0.95)';
+      g.lineWidth = lineWidth;
+      g.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = -Math.PI / 2 + i * TAU / 8;
+        if (i === 0) g.moveTo(Math.cos(a) * r, Math.sin(a) * r); else g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      g.closePath();
+      g.stroke();
+    });
+  });
+  if (!glow) return false;
+  stampWallpaperPulseGlow(glow, pulse);
+  return true;
+}
+
+// The central core disc: its baked shadow (sprites.js, stampWallpaperDiscGlow), then the disc unshadowed.
+function fillWallpaperCentralCoreDisc(cx, cy, r) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const stamped = stampWallpaperDiscGlow('processing-core', paintCentralCoreDisc, 'rgba(255,255,245,0.80)', structurePx(20, 1), r * 0.88);
+  ctx.restore();
+  if (!stamped) return false;
+  ctx.fillStyle = 'rgba(255,255,245,0.96)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.88, 0, TAU);
+  ctx.fill();
+  return true;
+}
+
+function paintCentralCoreDisc(g, radius) {
+  g.fillStyle = 'rgba(255,255,245,0.96)';
+  g.beginPath();
+  g.arc(0, 0, radius, 0, TAU);
+  g.fill();
+}
+
+// Scene optimization end (S4a).
 
 // Normalize the full-loop endpoint before any trigonometry, so wet-light states
 // are bit-for-bit identical at the two ends of the ping-pong animation.
@@ -184,6 +300,12 @@ function drawFoldingBand(cx, cy, rx, ry, rot, width, foldPhase) {
     ctx.stroke();
   }
 
+  // Scene optimization begin (S4a): see strokeWallpaperFoldingBandOutline.
+  if (!isMiniVariant && strokeWallpaperFoldingBandOutline(points, width)) {
+    ctx.restore();
+    return;
+  }
+  // Scene optimization end (S4a).
   ctx.shadowColor = 'rgba(255,255,255,0.78)';
   ctx.shadowBlur = structurePx(12, 1);
   ctx.lineWidth = Math.max(structurePx(1.15, 0.5), width * 0.11);
@@ -683,6 +805,24 @@ function drawCentralOctagon(cx, cy, progress, pulse) {
     ctx.stroke();
   }
 
+  // Scene optimization begin (S4a): see stampWallpaperOctagonGlow; the octagon is stroked unshadowed.
+  if (!isMiniVariant && stampWallpaperOctagonGlow(r, pulse)) {
+    ctx.strokeStyle = 'rgba(255,255,244,0.95)';
+    ctx.lineWidth = CENTRAL_OCTAGON_STROKE_PX * miniK * pulseStroke;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = -Math.PI / 2 + i * TAU / 8;
+      const wobble = pulse * r * 0.025 * Math.sin(a * 3 + progress * TAU);
+      const x = Math.cos(a) * (r + wobble);
+      const y = Math.sin(a) * (r + wobble);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  // Scene optimization end (S4a).
   ctx.strokeStyle = 'rgba(255,255,244,0.95)';
   ctx.lineWidth = CENTRAL_OCTAGON_STROKE_PX * miniK * pulseStroke;
   ctx.shadowColor = 'rgba(255,255,245,0.90)';
@@ -817,6 +957,9 @@ function drawCentralCore(cx, cy, phase) {
   ctx.arc(cx, cy, r * 5.1, 0, TAU);
   ctx.fill();
 
+  // Scene optimization begin (S4a): see fillWallpaperCentralCoreDisc.
+  if (!isMiniVariant && fillWallpaperCentralCoreDisc(cx, cy, r)) return;
+  // Scene optimization end (S4a).
   ctx.fillStyle = 'rgba(255,255,245,0.96)';
   ctx.shadowColor = 'rgba(255,255,245,0.80)';
   ctx.shadowBlur = structurePx(20, 1);

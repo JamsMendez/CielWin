@@ -297,7 +297,7 @@ public sealed class WebViewAlertLayerControllerTests
         var source = ReadControllerSource();
 
         Assert.Contains("SetVirtualHostNameToFolderMapping(\"cielwin-scene.example\"", source);
-        Assert.Contains("Navigate(SceneUrl(_currentScene));", source);
+        Assert.Contains("Navigate(SceneUrl(_currentScene, fps: _fps));", source);
         Assert.Contains("\"Wallpaper\", \"Web\")", source);
         Assert.DoesNotContain("\"Wallpaper\", \"Web\", \"processing\"", source);
         Assert.DoesNotContain(".local\"", source);
@@ -342,6 +342,33 @@ public sealed class WebViewAlertLayerControllerTests
     {
         Assert.Equal("https://cielwin-scene.example/idle/index.html?fps=60&variant=mini",
             WebViewAlertLayerController.SceneUrl(WallpaperScene.Idle, "mini"));
+    }
+
+    [Theory]
+    [InlineData(30, "https://cielwin-scene.example/raphael/index.html?fps=30")]
+    [InlineData(60, "https://cielwin-scene.example/raphael/index.html?fps=60")]
+    public void SceneUrl_CarriesTheChosenFrameRate(int fps, string expected)
+    {
+        Assert.Equal(expected, WebViewAlertLayerController.SceneUrl(WallpaperScene.Raphael, fps: fps));
+    }
+
+    [Fact]
+    public void SceneUrl_CarriesTheFrameRateBeforeTheVariant()
+    {
+        Assert.Equal("https://cielwin-scene.example/idle/index.html?fps=30&variant=mini",
+            WebViewAlertLayerController.SceneUrl(WallpaperScene.Idle, "mini", 30));
+    }
+
+    /// <summary>Only 30 and 60 ever reach the URL: anything else falls back to the default 60.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(45)]
+    [InlineData(120)]
+    [InlineData(-30)]
+    public void SceneUrl_FallsBackToSixty_ForAnyOtherFrameRate(int fps)
+    {
+        Assert.Equal("https://cielwin-scene.example/processing/index.html?fps=60",
+            WebViewAlertLayerController.SceneUrl(WallpaperScene.Processing, fps: fps));
     }
 
     /// <summary>
@@ -415,7 +442,7 @@ public sealed class WebViewAlertLayerControllerTests
     public void ARecreateWouldNavigateToTheCurrentSceneNotTheConstructionTimeOne()
     {
         var source = ReadControllerSource();
-        Assert.Contains("Navigate(SceneUrl(_currentScene));", source);
+        Assert.Contains("Navigate(SceneUrl(_currentScene, fps: _fps));", source);
 
         var start = source.IndexOf(
             "private void TearDown(string reason, bool dropEnvironment = false)", StringComparison.Ordinal);

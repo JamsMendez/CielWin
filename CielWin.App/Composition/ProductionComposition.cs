@@ -73,9 +73,9 @@ public static partial class ProductionComposition
             CreateWallpaperThread = () => new MtaWallpaperThread(new MtaActionThread(
                 "CielWinSceneWallpaperHost",
                 errorType => trace.Record($"scene-wallpaper-thread work-failed error={errorType}"))),
-            CreateSceneLayer = (surface, scene) =>
-                new WebViewSceneLayer(new WebViewAlertLayerController(surface, trace.Record, scene: scene)),
-            CreateMiniWindow = () => MiniSceneWindowController.CreateProduction(trace.Record),
+            CreateSceneLayer = (surface, scene, fps) =>
+                new WebViewSceneLayer(new WebViewAlertLayerController(surface, trace.Record, scene: scene, fps: fps)),
+            CreateMiniWindow = fps => MiniSceneWindowController.CreateProduction(trace.Record, fps),
             LoadHttpToken = () => AlertHttpTokenFile.LoadOrCreate(trace.Record),
             CreateHttpServer = options => new LocalHttpCommandServer(
                 options.Port, options.Token, options.HandleAlert, options.Diagnostic,

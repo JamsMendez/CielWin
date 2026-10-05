@@ -13,11 +13,11 @@ public sealed class TrayIconHostTests
     /// different order cannot pass.
     /// </summary>
     [Fact]
-    public void TheMenuIsOrdered_ModeThenSceneThenTheSoundGroupThenExit()
+    public void TheMenuIsOrdered_ModeThenSceneThenFrameRateThenTheSoundGroupThenExit()
     {
         Assert.Equal(
             [
-                TrayMenuEntry.Mode, TrayMenuEntry.Scene,
+                TrayMenuEntry.Mode, TrayMenuEntry.Scene, TrayMenuEntry.FrameRate,
                 TrayMenuEntry.ImportFailedSound, TrayMenuEntry.ImportWarningSound,
                 TrayMenuEntry.RemoveFailedSound, TrayMenuEntry.RemoveWarningSound,
                 TrayMenuEntry.AlertSounds, TrayMenuEntry.Exit,
@@ -63,6 +63,20 @@ public sealed class TrayIconHostTests
     public void SceneLabel_NamesEachScene(WallpaperScene scene, string expected)
     {
         Assert.Equal(expected, TrayIconHost.SceneLabel(scene));
+    }
+
+    [Theory]
+    [InlineData(30, "30 FPS")]
+    [InlineData(60, "60 FPS")]
+    public void FrameRateLabel_NamesEachRate(int fps, string expected)
+    {
+        Assert.Equal(expected, TrayIconHost.FrameRateLabel(fps));
+    }
+
+    [Fact]
+    public void TheFrameRateSubmenu_IsLabelledInEnglish()
+    {
+        Assert.Equal("Frame rate", TrayIconHost.FrameRateMenuLabel);
     }
 
     [Fact]

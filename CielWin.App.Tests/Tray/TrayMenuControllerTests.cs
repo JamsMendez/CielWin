@@ -13,6 +13,8 @@ public sealed class TrayMenuControllerTests
     private WallpaperScene _scene = WallpaperScene.Processing;
     private readonly List<WallpaperMode> _modeSelections = [];
     private readonly List<WallpaperScene> _sceneSelections = [];
+    private int _frameRate = 60;
+    private readonly List<int> _frameRateSelections = [];
     private bool _alertSounds = true;
     private int _alertSoundToggles;
     private readonly HashSet<AlertKind> _imported = [];
@@ -23,6 +25,7 @@ public sealed class TrayMenuControllerTests
     private TrayMenuController Create() => new(
         () => _mode, _modeSelections.Add,
         () => _scene, _sceneSelections.Add,
+        () => _frameRate, _frameRateSelections.Add,
         () => _alertSounds, () => _alertSoundToggles++,
         _imported.Contains, _imports.Add, _removals.Add,
         () => _exits++);
@@ -59,6 +62,33 @@ public sealed class TrayMenuControllerTests
         controller.SelectScene(WallpaperScene.Explorer);
 
         Assert.Equal([WallpaperScene.Explorer], _sceneSelections);
+    }
+
+    [Fact]
+    public void FrameRate_ReflectsTheInjectedGetter()
+    {
+        var controller = Create();
+        Assert.Equal(60, controller.FrameRate);
+
+        _frameRate = 30;
+
+        Assert.Equal(30, controller.FrameRate);
+    }
+
+    [Fact]
+    public void SelectFrameRate_ForwardsTheChoice()
+    {
+        var controller = Create();
+
+        controller.SelectFrameRate(30);
+
+        Assert.Equal([30], _frameRateSelections);
+    }
+
+    [Fact]
+    public void TheMenuOffersThirtyThenSixtyFps()
+    {
+        Assert.Equal([30, 60], TrayMenuController.FrameRates);
     }
 
     [Fact]
@@ -135,6 +165,7 @@ public sealed class TrayMenuControllerTests
 
         Assert.True(controller.IsVisible(TrayMenuEntry.Mode));
         Assert.True(controller.IsVisible(TrayMenuEntry.Scene));
+        Assert.True(controller.IsVisible(TrayMenuEntry.FrameRate));
         Assert.True(controller.IsVisible(TrayMenuEntry.Exit));
     }
 

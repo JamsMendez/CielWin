@@ -84,6 +84,15 @@ function make2dContext(options) {
           return function () { conicGradientFailures--; throw new Error("injected createConicGradient failure"); };
         }
         if (prop === "createRadialGradient" || prop === "createLinearGradient" || prop === "createConicGradient") {
+          // S1 test seam: options.gradientLog records every gradient (args, stops, fills) as its own object.
+          if (options.gradientLog) {
+            return function () {
+              var recorded = { kind: prop, args: Array.prototype.slice.call(arguments), stops: [], filled: 0,
+                addColorStop: function (stop, color) { this.stops.push([stop, color]); } };
+              options.gradientLog.push(recorded);
+              return recorded;
+            };
+          }
           return function () { return gradient; };
         }
         // js/earth.js (verbatim) bakes its globe texture through a REAL ImageData round-trip
@@ -113,6 +122,7 @@ function make2dContext(options) {
         return function () { /* no-op: beginPath/rect/clip/fill/drawImage/arc/rotate/scale/... */ };
       },
       set: function (target, prop, value) {
+        if (prop === "fillStyle" && options.gradientLog && value && typeof value.filled === "number") value.filled++;
         slots[prop] = value;
         return true;
       },
@@ -698,6 +708,158 @@ test("the planet's flare is sized from the active basis, so mini keeps it propor
 });
 
 // ---- Run ----------------------------------------------------------------------------------------
+
+// ---- S1 scene optimizations (odd/tasks/scene-optimizations.md, ported from CieLinux 4574b4a W1) ----
+// Every S1 change lives in marked blocks that only add lines; stripping them restores the pre-S1 sources,
+// which the tests below use as the byte-for-byte reference. The pins hash LF-normalized text, so they hold on
+// CRLF and LF checkouts alike (they equal the LF blobs at 7ecdc79).
+var S1_BLOCKS = /^[ \t]*\/\/ Scene optimization begin \(S1\)[^\n]*\n[\s\S]*?^[ \t]*\/\/ Scene optimization end \(S1\)\.\r?\n(\r?\n(?=\/\/|function|const|let))?/gm;
+function stripS1(text) { return text.replace(S1_BLOCKS, ""); }
+function sha256(text) { return require("crypto").createHash("sha256").update(text).digest("hex"); }
+
+test("S1 blocks only add lines: stripping them restores the pre-S1 sources", function () {
+  var PRE_S1 = {
+    "js/earth.js": "010d8956cc7f648629ef24750c584eed0dc21de15eb72d57428fec83999fd496",
+    "js/rings.js": "1dde4516d984afabfe84aeca85e17f8496dd15221a91eb7ae8e75ce7c6aae9d5"
+  };
+  Object.keys(PRE_S1).forEach(function (name) {
+    var text = fs.readFileSync(path.join(sceneDir, name), "utf8").replace(/\r\n/g, "\n"); // checkout-independent
+    assert.match(text, /^[ \t]*\/\/ Scene optimization begin \(S1\)/m, name + " marks S1");
+    assert.strictEqual(sha256(stripS1(text)), PRE_S1[name], name);
+  });
+});
+
+// The equirect bake is grayscale, so the fast path computes each texel once with the reference expressions
+// and writes one 32-bit word. The reference is the pre-S1 renderEarthFrame, evaluated in the same sandbox
+// (one page load; earth.js's bake costs seconds per vm realm) against the same lookups and ImageData.
+// One shared page for the S1 earth/vignette tests: a fresh realm re-runs the multi-second earth bake.
+var s1Page = null;
+function s1EarthPage() {
+  if (s1Page !== null) return s1Page;
+  var page = loadPage({ innerWidth: 1000, innerHeight: 500 });
+  var source = stripS1(fs.readFileSync(path.join(sceneDir, "js", "earth.js"), "utf8"));
+  var reference = source.match(/^function renderEarthFrame\([\s\S]*?^}/m);
+  assert.ok(reference, "reference renderEarthFrame found");
+  vm.runInContext(reference[0].replace("function renderEarthFrame(", "function renderEarthFrameReference("), page.sandbox);
+  s1Page = page;
+  return page;
+}
+
+function earthFrameBytes(page, fn, size, longitude) {
+  var run = function (code) { return vm.runInContext(code, page.sandbox); };
+  if (run("earthFrameImageData") !== null && run("earthDiscLookupSize") === size) run("earthFrameImageData.data.fill(0)");
+  page.sandbox[fn](size, longitude);
+  return Buffer.from(run("earthFrameImageData.data"));
+}
+
+test("earth: the grayscale fast path writes the reference bytes with no per-pixel Math calls", function () {
+  var page = s1EarthPage();
+  var run = function (code) { return vm.runInContext(code, page.sandbox); };
+  assert.strictEqual(run("EARTH_EQUIRECT_GRAY !== null && EARTH_LITTLE_ENDIAN"), true,
+    "the equirect bake is grayscale and the fast path is active");
+  var frame = function (fn, size, longitude) { return earthFrameBytes(page, fn, size, longitude); };
+  var sizes = [64, 109, 33, 241, 64];
+  var longitudes = [0, 0.002, 1.3, -2.2, 100.7, 4.8 * Math.PI / 180 * 3600, 4.8 * Math.PI / 180 * 86400.37];
+  sizes.forEach(function (size) {
+    longitudes.forEach(function (longitude) {
+      var expected = frame("renderEarthFrameReference", size, longitude);
+      var actual = frame("renderEarthFrame", size, longitude);
+      assert.strictEqual(Buffer.compare(actual, expected), 0, "size " + size + ", longitude " + longitude);
+    });
+  });
+  var MathObject = run("Math");
+  var saved = { round: MathObject.round, min: MathObject.min, max: MathObject.max };
+  var calls = 0;
+  Object.keys(saved).forEach(function (name) {
+    MathObject[name] = function () { calls++; return saved[name].apply(MathObject, arguments); };
+  });
+  try { page.sandbox.renderEarthFrame(64, 0.5); } finally { Object.assign(MathObject, saved); }
+  assert.strictEqual(calls, 0, calls + " Math.round/min/max calls per frame (reference: ~5 per inside pixel)");
+});
+
+// The S1 renderEarthFrame, re-evaluated with one of the fast-path guards shadowed (a color bake, a
+// big-endian host), must take the reference loop and write the reference bytes.
+test("earth: the fallback path (no grayscale bake, or big-endian) writes the reference bytes", function () {
+  var page = s1EarthPage();
+  var current = fs.readFileSync(path.join(sceneDir, "js", "earth.js"), "utf8").match(/^function renderEarthFrame\([\s\S]*?^}/m);
+  assert.ok(current && current[0].indexOf("EARTH_EQUIRECT_GRAY !== null && EARTH_LITTLE_ENDIAN") >= 0, "S1 guard found");
+  var forced = { renderEarthFrameNoGray: "const EARTH_EQUIRECT_GRAY = null;", renderEarthFrameBigEndian: "const EARTH_LITTLE_ENDIAN = false;" };
+  Object.keys(forced).forEach(function (name) {
+    vm.runInContext("var " + name + " = (function () { " + forced[name] + " return " + current[0] + "; })();", page.sandbox);
+  });
+  var fastPath = page.sandbox.renderEarthGrayPixels;
+  var fastPathCalls = 0;
+  page.sandbox.renderEarthGrayPixels = function () { fastPathCalls++; return fastPath.apply(this, arguments); };
+  try {
+    Object.keys(forced).forEach(function (name) {
+      [64, 109, 33].forEach(function (size) {
+        [0, 1.3, -2.2].forEach(function (longitude) {
+          var expected = earthFrameBytes(page, "renderEarthFrameReference", size, longitude);
+          var actual = earthFrameBytes(page, name, size, longitude);
+          assert.strictEqual(Buffer.compare(actual, expected), 0, name + ", size " + size + ", longitude " + longitude);
+        });
+      });
+    });
+  } finally {
+    page.sandbox.renderEarthGrayPixels = fastPath;
+  }
+  assert.strictEqual(fastPathCalls, 0, "the fallback never enters the grayscale fast path");
+});
+
+// A gradient that fails to build must not leave a dangling save(): the failing frame is caught by the render
+// loop, and an unbalanced save would grow the canvas state stack on every failing frame.
+test("vignette: a throwing createRadialGradient leaves save/restore balanced, and the next frame fills", function () {
+  var page = s1EarthPage();
+  var throws = 1;
+  var saves = 0;
+  var restores = 0;
+  var fills = 0;
+  var context = {
+    save: function () { saves++; },
+    restore: function () { restores++; },
+    fillRect: function () { fills++; },
+    createRadialGradient: function () {
+      if (throws > 0) { throws--; throw new Error("createRadialGradient failed"); }
+      return { addColorStop: function () {} };
+    },
+  };
+  assert.throws(function () { page.sandbox.drawVignette(context); }, /createRadialGradient failed/);
+  assert.strictEqual(saves, restores, "balanced after the failing frame (" + saves + " saves, " + restores + " restores)");
+  assert.strictEqual(fills, 0, "nothing filled on the failing frame");
+  page.sandbox.drawVignette(context);
+  assert.strictEqual(saves, restores, "balanced after the next frame");
+  assert.strictEqual(fills, 1, "the next frame fills the vignette");
+});
+
+// The vignette gradient only depends on (context, W, H): created once per geometry, filled every frame.
+test("full frame: the vignette gradient is created once per geometry, with the reference stops, and filled every frame", function () {
+  var log = [];
+  var page = loadPage({ innerWidth: 640, innerHeight: 360, gradientLog: log });
+  var vignettesFor = function (w, h) {
+    var r = Math.hypot(w / 2, h / 2);
+    return log.filter(function (g) {
+      return g.kind === "createRadialGradient" && g.args[0] === w / 2 && g.args[1] === h / 2 && g.args[5] === r;
+    });
+  };
+  page.sandbox.renderFrame(1000);
+  var first = vignettesFor(640, 360);
+  assert.strictEqual(first.length, 1, "one vignette gradient on the first frame");
+  var maxRadius = Math.hypot(320, 180);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(first[0].args)), [320, 180, maxRadius * 0.5, 320, 180, maxRadius]);
+  assert.deepStrictEqual(first[0].stops, [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0.9)"]]);
+  assert.strictEqual(first[0].filled, 1, "the vignette is filled on the first frame");
+  log.length = 0;
+  page.sandbox.renderFrame(1033);
+  page.sandbox.renderFrame(1066);
+  assert.strictEqual(vignettesFor(640, 360).length, 0, "steady frames reuse the vignette gradient");
+  assert.strictEqual(first[0].filled, 3, "the cached vignette is still filled every frame");
+  page.sandbox.window.innerWidth = 800;
+  page.sandbox.window.innerHeight = 400;
+  page.sandbox.resize();
+  page.sandbox.renderFrame(1100);
+  assert.strictEqual(vignettesFor(800, 400).length, 1, "rebuilt once on resize");
+  assert.strictEqual(page.consoleErrorCalls.length, 0, "every frame rendered without a caught error");
+});
 
 var failures = [];
 tests.forEach(function (t) {

@@ -107,16 +107,16 @@ internal sealed class CompositionHarness
             Threads.Add(thread);
             return thread;
         },
-        CreateSceneLayer = (surface, scene) =>
+        CreateSceneLayer = (surface, scene, fps) =>
         {
             if (LayerFactoryThrows) throw new InvalidOperationException("no WebView2 runtime");
-            var layer = new FakeSceneLayer(surface, scene);
+            var layer = new FakeSceneLayer(surface, scene, fps);
             Layers.Add(layer);
             return layer;
         },
-        CreateMiniWindow = () =>
+        CreateMiniWindow = fps =>
         {
-            var mini = new FakeMiniWindow(this);
+            var mini = new FakeMiniWindow(this, fps);
             Minis.Add(mini);
             return mini;
         },
@@ -203,10 +203,11 @@ internal sealed class FakeWallpaperThread(CompositionHarness harness) : IWallpap
     public void Dispose() => DisposeCalls++;
 }
 
-internal sealed class FakeSceneLayer(ICompositionOverlaySurface surface, WallpaperScene scene) : ISceneLayer
+internal sealed class FakeSceneLayer(ICompositionOverlaySurface surface, WallpaperScene scene, int fps = 60) : ISceneLayer
 {
     public ICompositionOverlaySurface Surface { get; } = surface;
     public WallpaperScene InitialScene { get; } = scene;
+    public int FrameRate { get; } = fps;
     public int Preloads { get; private set; }
     public List<AlertShowRequest> Starts { get; } = [];
     public int Ends { get; private set; }
@@ -253,8 +254,9 @@ internal sealed class FakeSceneLayer(ICompositionOverlaySurface surface, Wallpap
     public void Dispose() => DisposeCalls++;
 }
 
-internal sealed class FakeMiniWindow(CompositionHarness harness) : IMiniSceneWindow
+internal sealed class FakeMiniWindow(CompositionHarness harness, int fps = 60) : IMiniSceneWindow
 {
+    public int FrameRate { get; } = fps;
     public List<(WallpaperScene Scene, Rectangle Bounds)> Shows { get; } = [];
     public List<WallpaperScene> Switches { get; } = [];
     public List<Rectangle> Moves { get; } = [];

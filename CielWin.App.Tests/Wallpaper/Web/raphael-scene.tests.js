@@ -24,6 +24,7 @@ const { URLSearchParams } = require("url");
 
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
+const blurFreeGlowChecks = require(path.join(__dirname, "blur-free-glow.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node raphael-scene.tests.js <path-to-wallpaper-raphael-directory>");
@@ -781,6 +782,21 @@ test("the mini variant ignores the pause message (the corner window is always vi
 });
 
 // ---- Run ----------------------------------------------------------------------------------------
+
+// NEB-1 (odd/tasks/scene-optimizations.md S1, ported from CieLinux bc66a34): a GPU that exposes WebGL
+// mediump as fp16 (10-bit mantissa, range 2^15) overflows the nebula hash (x 43758.5453), so the value noise
+// collapses and only the analytic spiral arms remain. ANGLE-D3D runs mediump at fp32, which is the reference
+// look; requesting highp keeps that look on every GPU (identical where mediump already ran at fp32).
+test("the nebula fragment shader requests highp float (NEB-1)", function () {
+  var text = fs.readFileSync(path.join(sceneDir, "js", "nebula.js"), "utf8");
+  var fragment = text.match(/const NEBULA_FRAGMENT_SHADER = `([\s\S]*?)`;/);
+  assert.ok(fragment, "fragment shader source found");
+  assert.match(fragment[1], /^\s*precision highp float;/m);
+  assert.doesNotMatch(fragment[1], /precision mediump float;/);
+});
+
+// S4a (odd/tasks/scene-optimizations.md): PERF-5 baked glows instead of per-frame shadowBlur, see blur-free-glow.checks.js.
+blurFreeGlowChecks.register(test, sceneDir, "raphael");
 
 var failures = [];
 tests.forEach(function (t) {

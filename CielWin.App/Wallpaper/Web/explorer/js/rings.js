@@ -697,7 +697,36 @@ function drawSpark(context, x, y, size, intensity, color, rayLength) {
   context.restore();
 }
 
+// Scene optimization begin (S1): odd/tasks/scene-optimizations.md (ported from CieLinux W1). The vignette gradient only
+// depends on W and H; it is created once per (context, W, H) and reused (a CanvasGradient is resolved at fill
+// time under the same per-frame transform, so the pixels are the reference's).
+let vignetteGradientCache = { context: null, width: -1, height: -1, gradient: null };
+
+function cachedVignetteGradient(context) {
+  const cache = vignetteGradientCache;
+  if (cache.context === context && cache.width === W && cache.height === H) return cache.gradient;
+  const cx = W / 2;
+  const cy = H / 2;
+  const maxRadius = Math.hypot(cx, cy);
+  const gradient = context.createRadialGradient(cx, cy, maxRadius * VIGNETTE_INNER_STOP, cx, cy, maxRadius);
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(1, `rgba(0,0,0,${VIGNETTE_OUTER_ALPHA})`);
+  vignetteGradientCache = { context, width: W, height: H, gradient };
+  return gradient;
+}
+// Scene optimization end (S1).
+
 function drawVignette(context) {
+  // Scene optimization begin (S1): cached gradient (see cachedVignetteGradient).
+  if (typeof context.createRadialGradient === 'function') {
+    const gradient = cachedVignetteGradient(context); // before save(): a throw leaves no dangling save
+    context.save();
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, W, H);
+    context.restore();
+    return;
+  }
+  // Scene optimization end (S1).
   const cx = W / 2;
   const cy = H / 2;
   const maxRadius = Math.hypot(cx, cy);
