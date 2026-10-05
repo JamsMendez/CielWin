@@ -25,6 +25,7 @@ const constellationRingChecks = require(path.join(__dirname, "constellation-ring
 
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
+const alertOverlayCacheChecks = require(path.join(__dirname, "alert-overlay-cache.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node explorer-scene.tests.js <path-to-wallpaper-explorer-directory>");
@@ -297,6 +298,9 @@ test("hide stops the overlay (direct call and via a real host message), and malf
 
 test("the see-through hook draws rising sparks with the scene's own timeSeconds, offset by the tile origin", function () {
   var page = loadPage({ innerWidth: 1000, innerHeight: 400 });
+  // S4b: the full wallpaper normally reuses the scene's own spark layer (sceneSeeThroughFrameLayer, see
+  // alert-overlay-cache.checks.js); without it the overlay falls back to this hook, which is what this test proves.
+  page.sandbox.sceneSeeThroughFrameLayer = function () { return null; };
   var calls = [];
   var original = page.sandbox.drawRisingSparks;
   page.sandbox.drawRisingSparks = function (context, timeSeconds) {
@@ -940,6 +944,9 @@ test("full frame: the blue-layer glow gradient is created once per geometry, wit
   assert.strictEqual(glows()[0].args[5], glowRadius());
   assert.strictEqual(page.consoleErrorCalls.length, 0, "every frame rendered without a caught error");
 });
+
+// S4b (odd/tasks/scene-optimizations.md): S4b pins and the reused spark layer, see alert-overlay-cache.checks.js.
+alertOverlayCacheChecks.register(test, sceneDir, "explorer");
 
 var failures = [];
 tests.forEach(function (t) {
