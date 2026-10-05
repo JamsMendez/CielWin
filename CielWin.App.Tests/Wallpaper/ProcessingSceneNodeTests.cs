@@ -33,13 +33,13 @@ public sealed class ProcessingSceneNodeTests
         Path.Combine(AppContext.BaseDirectory, "Wallpaper", "Web", "processing-scene.tests.js");
 
     /// <summary>
-    /// Generous, but bounded -- the harness runs a handful of small vm-sandboxed cases, including one
-    /// full frame of the entire scene's render() pipeline, and normally finishes in well under a
-    /// second; this only exists to turn "the process manager wedged" into a reported test failure
-    /// instead of a `dotnet test` run that never comes back (see
-    /// <see cref="Alerts.AlertLayerLayoutNodeTests.HarnessTimeout"/>, the same shape).
+    /// Generous, but bounded -- the harness runs vm-sandboxed cases, including the S4a/S4b baked-glow
+    /// and alert-cache checks that tick long runs of full wallpaper frames (~8 s locally, several times
+    /// that on the 2-core GitHub Actions runner); this only exists to turn "the process manager wedged"
+    /// into a reported test failure instead of a `dotnet test` run that never comes back (see
+    /// <see cref="ExplorerSceneNodeTests.HarnessTimeout"/>, the same shape).
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 30s: timed out on the 2-core GitHub Actions runner
 
     [RequiresNodeFact]
     public void ProcessingSceneHarness_PassesAgainstTheRealShippedPage()
