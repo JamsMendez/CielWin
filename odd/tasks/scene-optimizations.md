@@ -48,6 +48,8 @@ measurement, so GPU-bound wins are unproven on WebView2.
   - [x] S4b alert-overlay caches + W4 (explorer + alert) — implemented, pending Windows measurement and user
     visual approval. Route: delegated (writer: alert-overlay.js + explorer animate.js + new check module + 2
     harnesses). Commit: `e055fd2`.
+  - [x] S4a2 Bound glow-cache keys (S4a review WARNING). Route: delegated (writer: test-only, no source change).
+    Commit: `e0e4d36`.
   - [ ] S4c spark atlas (adapted, CielWin lacks the mini O1–O3 base).
 
 ## Acceptance criteria
@@ -176,3 +178,19 @@ Next: S4a needs a Windows draws/s + GPU measurement (S2 probe) and the user's li
 
 Next: S4b needs the Windows explorer+warning draws/s + CPU measurement (S2 probe) and the user's live visual
 approval; then S4c.
+
+- S4a2 done (review WARNING on `c22fe8c`: line-glow keys hold the full strokeStyle, pulse keys hold `r`, and the
+  cache only clears on resize, so a per-frame-varying alpha/radius would re-bake and grow without bound). Proven
+  bounded, no source change: every key input is constant or quantized per geometry — ray alphas/widths/blurs are
+  module constants (`CENTRAL_RAY_*`, `0.70/0.22/5`), band outline width is `minD * const`, octagon/hexadecagon `r`
+  is `min(W,H) * const` / `coreRadius(minD)`, pulse levels are the fixed 9 bakes, and disc glows key on an integer
+  3% step of blur/radius over a bounded range. CieLinux `dcc933b` uses the identical keys and callers (no
+  quantization, no bound test). Appearance unchanged (tests only).
+  - Test: `blur-free-glow.checks.js` "the glow cache stays bounded over a long run of distinct frames" (both
+    harnesses): 1000 irregular timestamps over one 600 s period, then 2 x 300 at other offsets in later periods;
+    cache <= 64 entries, no later bake, no new key. Observed: processing 14 entries, raphael 24, later bakes 0.
+    Sample count is limited by the .NET 30 s per-harness timeout (~6 ms per mocked frame; 2400 + 2 x 1500 timed
+    out raphael).
+  - RED capability (scratch copy with a per-call random ray alpha): processing 3009, raphael 3019 entries — FAIL.
+    GREEN: processing 58/58, raphael 34/34. `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test
+    CielWin.sln`: Interop 269 passed / 22 skipped, App 716 passed / 0 failed.
