@@ -50,7 +50,9 @@ measurement, so GPU-bound wins are unproven on WebView2.
     harnesses). Commit: `e055fd2`.
   - [x] S4a2 Bound glow-cache keys (S4a review WARNING). Route: delegated (writer: test-only, no source change).
     Commit: `e0e4d36`.
-  - [ ] S4c spark atlas (adapted, CielWin lacks the mini O1–O3 base).
+  - [x] S4c spark atlas (adapted, CielWin lacks the mini O1–O3 base) — implemented, pending Windows measurement
+    and user visual approval. Route: delegated (writer: rising-sparks.js + new check module + explorer harness).
+    Commit: `ae8b482`.
 
 ## Acceptance criteria
 
@@ -195,3 +197,39 @@ approval; then S4c.
     GREEN: processing 58/58, raphael 34/34. `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test
     CielWin.sln`: Interop 269 passed / 22 skipped, App 716 passed / 0 failed.
 - S4b measured (e055fd2 via worktree at 9e58537, Release, 1 pass): explorer+warning 60 draws/s, ~103% CPU (was ~184% after S4a, ~218% baseline); processing 55.8, raphael 60 ~101%, explorer 60 ~94%, idle 60 ~54%. User approved S4b appearance live (explorer + held warning, 2026-10-04).
+
+- S4c done (implementation; CieLinux `4574b4a` W1 spark atlas, in `// Scene optimization begin/end (S4c)` blocks
+  that only add lines; stripping them restores the 24f3941 LF SHA-256 of `explorer/js/rising-sparks.js`; the S1
+  pin test now strips S4c first). Idle has no rising sparks, so only explorer changed; `animate.js` untouched.
+  - Full wallpaper only: a mature spark (age >= `RISING_SPARK_TRAIL_SECONDS`) is two trail halves (samples 0-3,
+    3-6) stamped from one atlas, each rotated onto its chord in the context's own transform (`getTransform`, so
+    the S4b spark layer and the see-through hook get the same streaks); young sparks keep the reference strokes.
+    Half 0 baked at unit alpha, half 1 (segments 4-6 + head) at half alpha, stamped once at 2a or twice at a, so
+    the additive brightness is kept without clamping in the bake. Atlas rebuilt only when W, H or DPR change.
+  - Adapted vs copied: the atlas bake, cell layout (rows <= 4096 device px), base-transform fallback and stamp
+    math are CieLinux's. Not ported: the mini atlas, O1 slot caching/trail buffer/culling, O1b hoisted terms,
+    O1d mini head. The bake uses the reference expressions inline (`t = s / 6`, `mix(0.4, 1, t)`, template
+    color string); the three chord samples (0, 3, 6) come from `risingSparkPosition` with the reference
+    sample-age expression. Additions: the sprites carry the context's `globalAlpha` (always 1 today) and the
+    young-spark reset restores it instead of a hard-coded 1; zero-length chords are guarded.
+  - Fidelity choices: length buckets every 0.25 device px (CieLinux 0.5; endpoint error halves), size buckets
+    every 0.05 (as CieLinux). Atlas 4032x552 at 3440x1440 (5100 cells, ~8.9 MB; CieLinux ~4032x282), baked once.
+    Kept CieLinux's two halves per spark (thirds would cut chord error but add a third stamp and a new design).
+  - Measured in the harness (no rasterizer, geometric bound): 7 timestamps at 1720x720, 1974 mature + 178 young
+    sparks, 6506 draw ops vs 15064 reference paths (same as CieLinux); trail-point error median 0.030 device px,
+    p99 0.407, worst 0.726 at 3440x1440 and 1720x720@2 (CieLinux median 0.05, p99 0.5, worst ~0.8); 0.028 /
+    0.382 / 0.680 at 1920x1080@1.25; size error <= 0.025.
+  - Could look different: mature spark streaks slightly softer (bilinear resampling of a rotated sprite; CieLinux
+    measured mean 0.17 levels, max <= 153 on streaks), inner trail samples up to ~0.7 device px off the bend.
+  - Tests: new `CielWin.App.Tests/Wallpaper/Web/rising-spark-atlas.checks.js` (registered by the explorer
+    harness; 2 realms): S4c pins; mature = two atlas halves and young = reference ops (vs the stripped
+    `drawRisingSparksReference` in the same realm); halves on the analytic trail with exact additive alpha at 3
+    geometries; bake ops = reference segments (half 1 at half gain), once per geometry, rebuilt on resize and DPR
+    change; composes with a translated context and a context alpha; full frames stamp from one atlas; bounded
+    over 1500 irregular timestamps + 3 x 100 in later hours (counting context, ~1.0M stamps, no rebuild, no new
+    canvas); mini stream identical to the reference and no atlas.
+  - RED: S4c checks 0/8 (`risingSparkFullAtlas is not defined`, no sprite transforms, pin unmarked). GREEN:
+    explorer 40/40 (~3 min, timeout 15 min). `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test
+    CielWin.sln`: Interop 269 passed / 22 skipped, App 716 passed / 0 failed.
+
+Next: S4c needs the Windows explorer draws/s + CPU measurement (S2 probe) and the user's live visual approval.
