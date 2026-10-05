@@ -261,3 +261,6 @@ Next: S4c needs the Windows explorer draws/s + CPU measurement (S2 probe) and th
     the spark-layer state check passed on the unchanged animate.js. GREEN: processing 60/60, explorer 42/42, idle
     28/28, raphael 34/34. `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test CielWin.sln`: Interop 269
     passed / 22 skipped, App 716 passed / 0 failed.
+- RDD: S1 approved (review-23661de45fe1cc91), S3 approved, S1b+S4a approved, S4b+S4a2+S4c approved; all acknowledged/burned. S4d assess: medium, 279 lines, under_budget (fixes of reviewed findings; no further review).
+- Follow-ups: tray frame-rate check-state test (S3 review suggestion); CieLinux has the vignette save-before-gradient bug (4574b4a rings.js).
+- Delivery: merged locally into main with --no-ff; the user pushes.
