@@ -114,7 +114,7 @@ public sealed class TrayIconHost : IDisposable
 
             foreach (var (fps, item) in frameRateItems)
             {
-                item.Checked = controller.FrameRate == fps;
+                item.Checked = IsFrameRateChecked(fps, controller.FrameRate);
             }
         }
 
@@ -178,6 +178,12 @@ public sealed class TrayIconHost : IDisposable
     public const string FrameRateMenuLabel = "Frame rate";
 
     public static string FrameRateLabel(int fps) => $"{fps} FPS";
+
+    /// <summary>
+    /// Whether the frame-rate item for <paramref name="itemFps"/> carries the check mark while the
+    /// wallpaper runs at <paramref name="currentFps"/>: only the current rate's item is checked.
+    /// </summary>
+    internal static bool IsFrameRateChecked(int itemFps, int currentFps) => itemFps == currentFps;
 
     /// <summary>
     /// A click handler that runs <paramref name="click"/> and never lets it throw: the click arrives as

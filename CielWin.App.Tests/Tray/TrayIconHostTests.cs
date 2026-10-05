@@ -79,6 +79,24 @@ public sealed class TrayIconHostTests
         Assert.Equal("Frame rate", TrayIconHost.FrameRateMenuLabel);
     }
 
+    /// <summary>
+    /// The check mark follows the controller's rate across a switch and back: the menu is re-checked on
+    /// every open, so a stale or inverted mapping would show the wrong rate as current.
+    /// </summary>
+    [Fact]
+    public void OnlyTheCurrentFrameRate_IsChecked_AcrossASwitchAndBack()
+    {
+        static string[] CheckedLabels(int current) =>
+            TrayMenuController.FrameRates
+                .Where(fps => TrayIconHost.IsFrameRateChecked(fps, current))
+                .Select(TrayIconHost.FrameRateLabel)
+                .ToArray();
+
+        Assert.Equal(["60 FPS"], CheckedLabels(60));
+        Assert.Equal(["30 FPS"], CheckedLabels(30));
+        Assert.Equal(["60 FPS"], CheckedLabels(60));
+    }
+
     [Fact]
     public void EveryModeAndSceneHasADistinctLabel()
     {
