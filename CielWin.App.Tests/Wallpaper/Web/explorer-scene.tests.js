@@ -26,6 +26,7 @@ const constellationRingChecks = require(path.join(__dirname, "constellation-ring
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
 const alertOverlayCacheChecks = require(path.join(__dirname, "alert-overlay-cache.checks.js"));
+const risingSparkAtlasChecks = require(path.join(__dirname, "rising-spark-atlas.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node explorer-scene.tests.js <path-to-wallpaper-explorer-directory>");
@@ -751,6 +752,7 @@ test("S1 blocks only add lines: stripping them restores the pre-S1 sources", fun
   };
   Object.keys(PRE_S1).forEach(function (name) {
     var text = fs.readFileSync(path.join(sceneDir, name), "utf8").replace(/\r\n/g, "\n"); // checkout-independent
+    text = risingSparkAtlasChecks.stripS4c(text); // S4c blocks (pinned separately) came after S1
     assert.match(text, /^[ \t]*\/\/ Scene optimization begin \(S1\)/m, name + " marks S1");
     assert.strictEqual(sha256(stripS1(text)), PRE_S1[name], name);
   });
@@ -947,6 +949,9 @@ test("full frame: the blue-layer glow gradient is created once per geometry, wit
 
 // S4b (odd/tasks/scene-optimizations.md): S4b pins and the reused spark layer, see alert-overlay-cache.checks.js.
 alertOverlayCacheChecks.register(test, sceneDir, "explorer");
+
+// S4c (odd/tasks/scene-optimizations.md): S4c pins and the full-wallpaper spark atlas, see rising-spark-atlas.checks.js.
+risingSparkAtlasChecks.register(test, sceneDir);
 
 var failures = [];
 tests.forEach(function (t) {

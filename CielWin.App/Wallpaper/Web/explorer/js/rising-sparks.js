@@ -71,7 +71,147 @@ function risingSparkEnvelope(ageFraction) {
 
 const RISING_SPARK_TRAIL_SAMPLES = 6;
 
+// Scene optimization begin (S4c): odd/tasks/scene-optimizations.md (ported from CieLinux 4574b4a W1 spark atlas,
+// adapted: CielWin has no mini spark atlas (CieLinux O1-O3) to build on, so the few shared terms it used live
+// here, and the mini page keeps drawing every spark with the reference strokes). On the full wallpaper a mature
+// spark (at least RISING_SPARK_TRAIL_SECONDS old, so its trail samples are evenly spaced in time) is drawn as its
+// two trail halves (samples 0-3 and 3-6) stamped from a pre-baked atlas instead of 6 strokes + 1 head fill, each
+// a per-frame anti-aliased path. Every cell keeps the reference's additive brightness: half 0 (segment alphas
+// 1/6..1/2, overlapping caps sum to < 1) is baked at unit alpha; half 1 (segments 4..6 plus the head, whose
+// overlaps sum up to 2) is baked at half alpha so nothing clamps in the bake, then stamped once at globalAlpha 2a
+// (a <= 0.5) or twice at a. Each half is placed on its chord; its inner samples sit off the analytic trail by a
+// fraction of a device px (bounded in rising-spark-atlas.checks.js). Buckets: half lengths every 0.25 device px
+// (CieLinux: 0.5) and spark sizes every 0.05. Cells are laid out in rows at most 4096 device px wide. Young sparks
+// keep the strokes. Sprites are placed in the context's own transform, so the alert see-through hook (a
+// translated tile layer) and the S4b spark layer get the same streaks. The atlas is rebuilt only when W, H or DPR
+// change.
+const RISING_SPARK_FULL_SPRITE_PAD = 3; // CSS px around the streak: head radius 1.82 plus anti-aliasing
+const RISING_SPARK_FULL_SIZE_MIN = 0.6; // spark.size = mix(0.6, 1.4, random()) in risingSparkAt
+const RISING_SPARK_FULL_SIZE_MAX = 1.4;
+const RISING_SPARK_FULL_SIZE_STEP = 0.05;
+const RISING_SPARK_FULL_LENGTH_STEP_DEVICE_PX = 0.25;
+const RISING_SPARK_FULL_HALF_GAIN = [1, 0.5]; // bake gain per trail half (see above)
+const RISING_SPARK_FULL_ATLAS_MAX_WIDTH = 4096; // device px
+const risingSparkFullTrail = new Float64Array(6); // trail samples 0, 3 and 6 (x, y)
+let risingSparkFullAtlas = null;
+
+function risingSparkFullAtlasFor(width, height, dpr) {
+  const cached = risingSparkFullAtlas;
+  if (cached !== null && cached.width === width && cached.height === height && cached.dpr === dpr) return cached;
+  // A trail half spans half the trail seconds: its vertical extent is exactly speed * height * halfSeconds, and
+  // its horizontal extent at most |tilt| times that (the drift rate never exceeds the tilt).
+  const halfSeconds = RISING_SPARK_TRAIL_SECONDS / 2;
+  const lengthMin = RISING_SPARK_SPEED_MIN * height * halfSeconds;
+  const lengthMax = RISING_SPARK_SPEED_MAX * height * halfSeconds * Math.hypot(1, RISING_SPARK_TILT_BASE + RISING_SPARK_TILT_EDGE);
+  const lengthStep = RISING_SPARK_FULL_LENGTH_STEP_DEVICE_PX / dpr;
+  const lengthCount = Math.ceil((lengthMax - lengthMin) / lengthStep) + 1;
+  const sizeCount = Math.round((RISING_SPARK_FULL_SIZE_MAX - RISING_SPARK_FULL_SIZE_MIN) / RISING_SPARK_FULL_SIZE_STEP) + 1;
+  const lengths = new Float64Array(lengthCount), sizes = new Float64Array(sizeCount);
+  for (let col = 0; col < lengthCount; col++) lengths[col] = lengthMin + col * lengthStep;
+  for (let k = 0; k < sizeCount; k++) sizes[k] = RISING_SPARK_FULL_SIZE_MIN + k * RISING_SPARK_FULL_SIZE_STEP;
+  const pad = RISING_SPARK_FULL_SPRITE_PAD;
+  const cellWidth = Math.ceil((lengths[lengthCount - 1] + 2 * pad) * dpr);
+  const cellHeight = Math.ceil(2 * pad * dpr);
+  const perRow = Math.max(1, Math.floor(RISING_SPARK_FULL_ATLAS_MAX_WIDTH / cellWidth));
+  const cellCount = sizeCount * 2 * lengthCount;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.min(cellCount, perRow) * cellWidth;
+  canvas.height = Math.ceil(cellCount / perRow) * cellHeight;
+  const bake = canvas.getContext('2d');
+  bake.globalCompositeOperation = 'lighter';
+  bake.lineCap = 'round';
+  // Cell index (sizeIndex * 2 + half) * lengthCount + col: the half's tail at (pad, pad), its head end at
+  // (pad + length, pad). Segment s uses the reference's t = s / RISING_SPARK_TRAIL_SAMPLES and mix(0.4, 1, t).
+  for (let sizeIndex = 0; sizeIndex < sizeCount; sizeIndex++) {
+    const sparkWidth = RISING_SPARK_WIDTH * sizes[sizeIndex];
+    for (let half = 0; half < 2; half++) {
+      const gain = RISING_SPARK_FULL_HALF_GAIN[half];
+      for (let col = 0; col < lengthCount; col++) {
+        const cell = (sizeIndex * 2 + half) * lengthCount + col;
+        const length = lengths[col];
+        bake.setTransform(dpr, 0, 0, dpr, (cell % perRow) * cellWidth, Math.floor(cell / perRow) * cellHeight);
+        for (let k = 1; k <= 3; k++) {
+          const t = (half * 3 + k) / RISING_SPARK_TRAIL_SAMPLES;
+          bake.strokeStyle = `rgba(${RISING_SPARK_COLOR}, ${t * gain})`;
+          bake.lineWidth = sparkWidth * mix(0.4, 1, t);
+          bake.beginPath();
+          bake.moveTo(pad + (k - 1) / 3 * length, pad);
+          bake.lineTo(pad + k / 3 * length, pad);
+          bake.stroke();
+        }
+        if (half === 1) {
+          bake.fillStyle = `rgba(255, 255, 255, ${gain})`;
+          bake.beginPath();
+          bake.arc(pad + length, pad, RISING_SPARK_HEAD_RADIUS * sizes[sizeIndex], 0, TAU);
+          bake.fill();
+        }
+      }
+    }
+  }
+  risingSparkFullAtlas = { canvas, width, height, dpr, pad, cellWidth, cellHeight, perRow,
+    lengthMin, lengthStep, lengthCount, lengths,
+    sizeMin: RISING_SPARK_FULL_SIZE_MIN, sizeStep: RISING_SPARK_FULL_SIZE_STEP, sizeCount, sizes };
+  return risingSparkFullAtlas;
+}
+
+// The context's transform when drawRisingSparks starts (the scene's device scale, the S4b layer's, or the alert
+// hook's tile translation on top of it). A context without getTransform falls back to the scene scale.
+function risingSparkBaseTransform(context) {
+  const m = typeof context.getTransform === 'function' ? context.getTransform() : null;
+  return m && typeof m.a === 'number' ? { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f }
+    : { a: canvasScaleX, b: 0, c: 0, d: canvasScaleY, e: 0, f: 0 };
+}
+
+// Trail samples 0, 3 and 6 of a spark, with the reference loop's sample-age expression.
+function risingSparkFullTrailOf(spark) {
+  const trail = risingSparkFullTrail;
+  for (let k = 0; k < 3; k++) {
+    const t = (k * 3) / RISING_SPARK_TRAIL_SAMPLES;
+    const point = risingSparkPosition(spark, Math.max(0, spark.age - RISING_SPARK_TRAIL_SECONDS * (1 - t)), W, H);
+    trail[k * 2] = point.x;
+    trail[k * 2 + 1] = point.y;
+  }
+  return trail;
+}
+
+// Draws one mature spark as its two trail-half sprites: each is rotated onto its chord (samples 0-3 and 3-6) and
+// centered on the chord midpoint, in the base transform.
+function drawRisingSparkFullSprites(context, atlas, base, trail, size, alpha) {
+  let sizeIndex = Math.round((size - atlas.sizeMin) / atlas.sizeStep);
+  sizeIndex = sizeIndex < 0 ? 0 : (sizeIndex >= atlas.sizeCount ? atlas.sizeCount - 1 : sizeIndex);
+  const drawWidth = atlas.cellWidth / atlas.dpr, drawHeight = atlas.cellHeight / atlas.dpr;
+  for (let half = 0; half < 2; half++) {
+    const o = half * 2;
+    const ax = trail[o], ay = trail[o + 1], bx = trail[o + 2], by = trail[o + 3];
+    const dx = bx - ax, dy = by - ay, length = Math.sqrt(dx * dx + dy * dy);
+    const cos = length > 0 ? dx / length : 0, sin = length > 0 ? dy / length : -1;
+    let col = Math.round((length - atlas.lengthMin) / atlas.lengthStep);
+    col = col < 0 ? 0 : (col >= atlas.lengthCount ? atlas.lengthCount - 1 : col); // never hit: the range is analytic
+    const cell = (sizeIndex * 2 + half) * atlas.lengthCount + col;
+    const sx = (cell % atlas.perRow) * atlas.cellWidth, sy = Math.floor(cell / atlas.perRow) * atlas.cellHeight;
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    context.setTransform(base.a * cos + base.c * sin, base.b * cos + base.d * sin,
+      base.c * cos - base.a * sin, base.d * cos - base.b * sin,
+      base.a * mx + base.c * my + base.e, base.b * mx + base.d * my + base.f);
+    // Half 1 is baked at half alpha: 2a in one stamp when that fits globalAlpha, else two stamps at a.
+    const stamps = half === 1 && alpha > 0.5 ? 2 : 1;
+    context.globalAlpha = half === 1 && stamps === 1 ? alpha * 2 : alpha;
+    for (let stamp = 0; stamp < stamps; stamp++) {
+      context.drawImage(atlas.canvas, sx, sy, atlas.cellWidth, atlas.cellHeight,
+        -(atlas.pad + atlas.lengths[col] / 2), -atlas.pad, drawWidth, drawHeight);
+    }
+  }
+}
+// Scene optimization end (S4c).
+
 function drawRisingSparks(context, timeSeconds) {
+  // Scene optimization begin (S4c): the full wallpaper stamps mature sparks from the atlas (see above).
+  const fullAtlas = typeof isMiniVariant !== 'undefined' && isMiniVariant ? null : risingSparkFullAtlasFor(W, H, DPR);
+  const fullBase = fullAtlas === null ? null : risingSparkBaseTransform(context);
+  // The strokes inherit the context's alpha (1 in every caller); sprites set globalAlpha, so they carry it.
+  const fullBaseAlpha = fullAtlas === null || typeof context.globalAlpha !== 'number' ? 1 : context.globalAlpha;
+  let fullSpriteState = false;
+  // Scene optimization end (S4c).
   context.save();
   context.globalCompositeOperation = 'lighter';
   context.lineCap = 'round';
@@ -80,6 +220,21 @@ function drawRisingSparks(context, timeSeconds) {
     if (spark.age > spark.lifetime) continue;
     const alpha = risingSparkEnvelope(spark.age / spark.lifetime) * spark.brightness;
     if (alpha <= 0.01) continue;
+    // Scene optimization begin (S4c): two half sprites per mature spark; a young spark that follows sprites first
+    // restores the base transform and alpha its strokes expect.
+    if (fullAtlas !== null) {
+      if (spark.age >= RISING_SPARK_TRAIL_SECONDS) {
+        drawRisingSparkFullSprites(context, fullAtlas, fullBase, risingSparkFullTrailOf(spark), spark.size, alpha * fullBaseAlpha);
+        fullSpriteState = true;
+        continue;
+      }
+      if (fullSpriteState) {
+        context.setTransform(fullBase.a, fullBase.b, fullBase.c, fullBase.d, fullBase.e, fullBase.f);
+        context.globalAlpha = fullBaseAlpha;
+        fullSpriteState = false;
+      }
+    }
+    // Scene optimization end (S4c).
 
     // Streak: a tapered polyline through the spark's recent positions, so the tail follows the
     // bend instead of cutting straight across it.
