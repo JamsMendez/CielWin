@@ -34,12 +34,11 @@ public sealed class RaphaelSceneNodeTests
 
     /// <summary>
     /// Generous, but bounded -- same shape as <see cref="ProcessingSceneNodeTests.HarnessTimeout"/>:
-    /// this scene, like processing (and unlike explorer's earth.js bake), has no expensive load-time
-    /// work, so the harness normally finishes in well under a second; this only exists to turn "the
-    /// process manager wedged" into a reported test failure instead of a `dotnet test` run that never
-    /// comes back.
+    /// the S4a baked-glow checks tick long runs of full wallpaper frames (~12 s locally, several times
+    /// that on the 2-core GitHub Actions runner); this only exists to turn "the process manager wedged"
+    /// into a reported test failure instead of a `dotnet test` run that never comes back.
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 30s: timed out on the 2-core GitHub Actions runner
 
     [RequiresNodeFact]
     public void RaphaelSceneHarness_PassesAgainstTheRealShippedPage()
