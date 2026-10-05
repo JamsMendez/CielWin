@@ -45,7 +45,9 @@ measurement, so GPU-bound wins are unproven on WebView2.
   - [x] S4a PERF-5 baked glows (processing + raphael) — implemented, pending Windows measurement and user visual
     approval. Route: delegated (writer: 2 layers.js + 2 sprites.js + new check module + 2 harnesses).
     Commit: `c22fe8c`.
-  - [ ] S4b alert-overlay caches + W4 (explorer + alert).
+  - [x] S4b alert-overlay caches + W4 (explorer + alert) — implemented, pending Windows measurement and user
+    visual approval. Route: delegated (writer: alert-overlay.js + explorer animate.js + new check module + 2
+    harnesses). Commit: `e055fd2`.
   - [ ] S4c spark atlas (adapted, CielWin lacks the mini O1–O3 base).
 
 ## Acceptance criteria
@@ -139,3 +141,38 @@ measurement, so GPU-bound wins are unproven on WebView2.
 
 Next: S4a needs a Windows draws/s + GPU measurement (S2 probe) and the user's live visual approval; then S4b.
 - S4a measured (c22fe8c, Release, same machine/method as S2, 1 pass): processing 56.4 draws/s (was 34–37), p99 30.4 ms; raphael 60, CPU ~101% (was ~144%); explorer 60, ~92% (was 128–147%); idle 60, ~47% (was 74–84%); explorer+warning 59.4, ~184% (was ~218%). Includes S1 gains. User approved S4a appearance live (2026-10-04).
+
+- S4b done (implementation; CieLinux `4574b4a` W1 alert pieces + W4, in `// Scene optimization begin/end (S4b)`
+  blocks that only add lines; stripping them restores the 5b8a22b LF SHA-256 of `shared/js/alert-overlay.js` and
+  `explorer/js/animate.js`):
+  - W1 (`alert-overlay.js`): wash (evenodd path), title letters and their pre-blurred drop shadow baked once per
+    title/wash/letters color, tile size, scale and measured title width (re-baked when the title face loads),
+    stamped with drawImage; rails, see-through, frame and modules stay per frame in reference order. Released
+    when the overlay stops.
+  - W4 (full wallpaper only): explorer draws its rising sparks once into a canvas-sized layer (composited
+    'lighter') and the see-through letters blit it (`sceneSeeThroughFrameLayer`) instead of a second
+    `drawRisingSparks` pass; recolor/clip/stamp of the intersections over the two title bands only (all scenes);
+    side modules drawn into a layer once per 100 ms counter value and stamped; a shown FAILED tile downscales
+    the scene canvas directly (no whole-canvas copy; a revealing tile keeps the copy).
+  - Adaptations: CielWin has no luma-keyed mini (`lumaKeyedAlertLetters`/`keyedLetters`), so the full/mini split
+    uses `isMiniVariant` (`alertFullWallpaper()`), and the letters always use `theme.letters`. Mini keeps the
+    reference see-through, per-frame modules and backdrop copy but gets the W1 static bake (as CieLinux).
+    Skipped: the spark atlas (S4c); nothing in W4 depended on the atlas or the O1–O3/B5 mini code.
+  - Could look different: the letter shadow (baked with its letters onto a transparent layer, then stamped),
+    explorer see-through sparks (additive via a premultiplied layer; CieLinux measured max 3 levels, mean
+    ≤0.0093), module boxes (stamped from a layer at the same sub-pixel origin).
+  - Tests: new `CielWin.App.Tests/Wallpaper/Web/alert-overlay-cache.checks.js` (per-canvas recording mock):
+    processing harness — bake once with the theme's title/wash/letters/intersections colors for warning and
+    failed, shadow bake = reference stamp, no per-frame shadow/evenodd; rebuilt on resize, title face load and
+    alert change, released on hide; module labels only on counter ticks; band-only recolor/clip/stamp; direct
+    backdrop (1 and 2 FAILED tiles) and copy kept while revealing; mini keeps the reference paths. Explorer
+    harness — S4b pins; one spark pass per frame with the layer stamped 'lighter' and blitted per band
+    (warning, warning+failed tiles, after resize), released after hide. The existing explorer hook test now
+    nulls `sceneSeeThroughFrameLayer` to exercise the hook fallback.
+  - RED (final tests vs the 5b8a22b alert-overlay.js/animate.js in a scratch copy): processing 51/57 (6 S4b
+    checks), explorer S4b checks 0/2. GREEN: processing 57/57, explorer 32/32, idle 28/28, raphael 33/33.
+    `dotnet build CielWin.sln` 0 warnings / 0 errors; `dotnet test CielWin.sln`: Interop 269 passed / 22
+    skipped, App 716 passed / 0 failed.
+
+Next: S4b needs the Windows explorer+warning draws/s + CPU measurement (S2 probe) and the user's live visual
+approval; then S4c.
