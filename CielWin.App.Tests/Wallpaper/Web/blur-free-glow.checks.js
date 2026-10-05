@@ -299,6 +299,41 @@ function register(test, sceneDir, scene) {
     assert.deepStrictEqual(h.errors, []);
   });
 
+  // S4a2 (S4a review WARNING): every glow cache key must come from a bounded set. A key built from a value that
+  // varies continuously with time (a per-call alpha in a strokeStyle, an unquantized radius or blur) would bake a
+  // new bitmap on most frames and grow the cache without bound on a long-running wallpaper. Many irregular,
+  // never-repeated timestamps across one full period must leave a small cache, and further periods sampled at
+  // different timestamps must add no key and no bake.
+  test(prefix + "the glow cache stays bounded over a long run of distinct frames", function () {
+    const h = harness(sceneDir, { width: 1920, height: 1080 });
+    const isBake = (element) => blurred(h.streamOf(element)).length > 0;
+    let seed = 0x2545f491;
+    const random = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; };
+    const run = (from, count) => {
+      let bakes = 0, ms = from;
+      const step = PERIOD_MS / count;
+      for (let i = 0; i < count; i++) {
+        ms = from + i * step + random() * step;
+        bakes += h.tick(ms).created.filter(isBake).length;
+        h.main.length = 0; // the scene call stream is not inspected here; keep the long run's memory flat
+      }
+      return bakes;
+    };
+    // A full frame costs ~6 ms under the recording mock, and the .NET host gives each harness 30 s: 1000 + 2 x 300
+    // frames still sample every pulse phase hundreds of times. A per-call ray alpha caches ~3000 glows here.
+    const BOUND = 64;
+    const firstBakes = run(0, 1000);
+    const firstSize = h.evaluate("wallpaperGlowCache.entries.size");
+    assert.ok(firstBakes > 0 && firstSize > 0, "the first period bakes");
+    assert.ok(firstSize <= BOUND, firstSize + " cached glows after one period (bound " + BOUND + ")");
+    const firstKeys = json(h.evaluate("[...wallpaperGlowCache.entries.keys()].sort()"));
+    const laterBakes = run(PERIOD_MS + 17, 300) + run(2 * PERIOD_MS + 311, 300);
+    assert.strictEqual(laterBakes, 0, "no bake after the first period");
+    assert.deepStrictEqual(json(h.evaluate("[...wallpaperGlowCache.entries.keys()].sort()")), firstKeys, "no new glow key");
+    assert.strictEqual(h.evaluate("wallpaperGlowCache.key"), "1920x1080@1,1");
+    assert.deepStrictEqual(h.errors, []);
+  });
+
   test(prefix + "every layer keeps the reference shapes, minus only their canvas shadows", function () {
     for (const [width, height, dpr] of [[3440, 1440, 1], [1280, 720, 2]]) {
       const h = harness(sceneDir, { width, height, dpr });
