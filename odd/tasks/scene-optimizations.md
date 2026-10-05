@@ -233,3 +233,4 @@ approval; then S4c.
     CielWin.sln`: Interop 269 passed / 22 skipped, App 716 passed / 0 failed.
 
 Next: S4c needs the Windows explorer draws/s + CPU measurement (S2 probe) and the user's live visual approval.
+- S4c measured (ae8b482 via worktree at 45f63a7, Release, 1 pass): explorer 60 draws/s ~57% CPU (was ~94% after S4b, 128–147% baseline); explorer+warning 60 ~62% (was ~103%, ~218% baseline); idle 60 ~44%. User approved S4c appearance live (explorer sparks, 2026-10-04).
