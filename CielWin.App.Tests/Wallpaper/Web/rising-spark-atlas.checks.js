@@ -352,6 +352,75 @@ function registerFull(test, sceneDir) {
     console.log("  S4c bounded: " + stamps + " stamps from one " + atlas.canvas.width + "x" + atlas.canvas.height
       + " atlas (" + cells + " cells)");
   });
+
+  // S4d (review WARNING on ae8b482): the atlas grows with (height x DPR)^2, and a failed bake used to throw every
+  // frame (no cache), allocating another atlas canvas each time and drawing no sparks.
+  test("S4d full sparks: a failed atlas bake draws the reference strokes and is attempted once per geometry", () => {
+    const h = fullPage();
+    const doc = h.sandbox.document, createElement = doc.createElement;
+    const sabotages = [
+      ["null context", 1500, 650, 1, (element) => { element.getContext = () => null; }],
+      ["throwing context", 1510, 650, 1.25, (element) => { element.getContext = () => { throw new Error("canvas allocation failed"); }; }],
+    ];
+    try {
+      for (const [label, width, height, dpr, sabotage] of sabotages) {
+        setGeometry(h, width, height, dpr);
+        let attempts = 0;
+        doc.createElement = (name) => { const element = createElement(name); attempts++; sabotage(element); return element; };
+        for (const time of SPARK_TIMES) {
+          const now = recorder(), ref = recorder();
+          h.sandbox.drawRisingSparks(now.proxy, time);
+          h.sandbox.drawRisingSparksReference(ref.proxy, time);
+          assert.deepStrictEqual(json(now.ops), json(ref.ops), label + ": reference strokes at t=" + time);
+          assert.ok(count(now.ops, "stroke") > 100, label + ": sparks drawn at t=" + time);
+        }
+        assert.strictEqual(attempts, 1, label + ": one bake attempt for the geometry");
+        assert.strictEqual(h.evaluate("risingSparkFullAtlas"), null, label + ": no atlas kept");
+        // Full frames at the failed geometry: the scene's own caches build normally, the atlas is not retried.
+        doc.createElement = createElement;
+        const start = 5000 + 1000 * sabotages.findIndex((entry) => entry[0] === label); // the frame clock only advances
+        h.tick(start);
+        const before = h.created.length;
+        for (const ms of [start + 100, start + 200, start + 300]) {
+          const ops = h.tick(ms);
+          assert.ok(count(ops, "stroke") > 100, label + " @" + ms + ": sparks stroked on the scene canvas");
+        }
+        assert.strictEqual(h.created.length, before, label + ": no canvas created by later frames");
+        assert.deepStrictEqual(h.errors, [], label + ": no caught render errors");
+      }
+    } finally {
+      doc.createElement = createElement;
+    }
+    // A working geometry bakes again.
+    setGeometry(h, 1720, 720, 1);
+    const now = recorder();
+    h.sandbox.drawRisingSparks(now.proxy, 7.7);
+    assert.ok(h.evaluate("risingSparkFullAtlas") !== null && count(now.ops, "drawImage") > 100, "atlas back on a working geometry");
+  });
+
+  test("S4d full sparks: an oversize atlas (8K at 200%, tall portrait) is not baked; the reference strokes draw", () => {
+    const h = fullPage();
+    for (const [width, height, dpr] of [[7680, 4320, 2], [2160, 12000, 1]]) {
+      setGeometry(h, width, height, dpr);
+      const before = h.created.length;
+      for (const time of SPARK_TIMES.slice(0, 3)) {
+        const now = recorder(), ref = recorder();
+        h.sandbox.drawRisingSparks(now.proxy, time);
+        h.sandbox.drawRisingSparksReference(ref.proxy, time);
+        assert.deepStrictEqual(json(now.ops), json(ref.ops), width + "x" + height + "@" + dpr + ": reference strokes at t=" + time);
+      }
+      assert.strictEqual(h.created.length, before, width + "x" + height + "@" + dpr + ": no atlas canvas allocated");
+      assert.strictEqual(h.evaluate("risingSparkFullAtlas"), null);
+    }
+    // The everyday sizes stay under the cap.
+    for (const [width, height, dpr] of [[3440, 1440, 1], [2560, 1440, 1.5]]) {
+      setGeometry(h, width, height, dpr);
+      h.sandbox.drawRisingSparks(recorder().proxy, 1);
+      const atlas = h.evaluate("risingSparkFullAtlas");
+      assert.ok(atlas !== null, width + "x" + height + "@" + dpr + ": atlas baked");
+      console.log("  S4d " + width + "x" + height + "@" + dpr + ": atlas " + atlas.canvas.width + "x" + atlas.canvas.height);
+    }
+  });
 }
 
 function registerMini(test, sceneDir) {

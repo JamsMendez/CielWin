@@ -124,6 +124,28 @@ const json = (value) => JSON.parse(JSON.stringify(value));
 const isFrameStroke = (op, w, h) => op[0] === "strokeRect" && op[1] === w * 0.038 && op[2] === h * 0.064;
 const isModuleBox = (op, w) => op[0] === "strokeRect" && op[3] === Math.max(16, w * 0.018);
 
+// The transform (a, b, c, d, e, f) and globalAlpha a recorded context holds before ops[end]: replays its
+// save/restore stack, transform calls and alpha writes from the start of the stream.
+function sceneStateAt(ops, end) {
+  const multiply = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+  let state = { m: [1, 0, 0, 1, 0, 0], alpha: 1 };
+  const stack = [];
+  for (let i = 0; i < end; i++) {
+    const [name, ...a] = ops[i];
+    if (name === "save") stack.push({ m: state.m.slice(), alpha: state.alpha });
+    else if (name === "restore") state = stack.length ? stack.pop() : state;
+    else if (name === "setTransform") state.m = a.slice(0, 6);
+    else if (name === "resetTransform") state.m = [1, 0, 0, 1, 0, 0];
+    else if (name === "transform") state.m = multiply(state.m, a);
+    else if (name === "translate") state.m = multiply(state.m, [1, 0, 0, 1, a[0], a[1]]);
+    else if (name === "scale") state.m = multiply(state.m, [a[0], 0, 0, a[1], 0, 0]);
+    else if (name === "rotate") state.m = multiply(state.m, [Math.cos(a[0]), Math.sin(a[0]), -Math.sin(a[0]), Math.cos(a[0]), 0, 0]);
+    else if (name === "=globalAlpha") state.alpha = a[0];
+  }
+  return state;
+}
+
 function alertRun(sceneDir, hash, frames, options) {
   const h = harness(sceneDir, Object.assign({ hash: hash }, options || {}));
   const perFrame = [h.tick(0)];
@@ -267,6 +289,82 @@ function registerOverlay(test, sceneDir) {
     assert.ok(backdrop && h.streamOf(backdrop.canvas).some((op) => op[0] === "drawImage" && op[1] === h.canvas), "revealing: copy kept");
   });
 
+  // S4d (review WARNING on e055fd2): a prepared tile is found by its device rect and cell; a miss used to downscale the
+  // live canvas, which earlier tiles of the same frame may already have drawn into.
+  test("S4d alert: at fractional DPR and with tile gaps every shown FAILED tile upscales its prepared bitmap", () => {
+    let fractional = 0;
+    for (const [dpr, hash, failedCount] of [
+      [1.25, "#tiles=failed,failed&columns=2&rows=1&gap=8&duration=99999", 2],
+      [1.5, "#tiles=failed,warning,failed&columns=3&rows=1&gap=7&duration=99999", 2],
+      [1.25, "#tiles=failed,failed,failed&columns=3&rows=1&gap=5&duration=99999", 3],
+      [1.5, "#tiles=failed,failed,warning,failed&columns=2&rows=2&gap=9&duration=99999", 3],
+    ]) {
+      const { h } = alertRun(sceneDir, hash, [300, 900, 1500], { dpr: dpr });
+      const scale = h.evaluate("canvasScaleX");
+      fractional += JSON.parse(h.evaluate("JSON.stringify(tileRects())")).filter((r) => [r.x * scale, r.y * scale, r.w * scale, r.h * scale].some((v) => !Number.isInteger(v))).length;
+      for (const ms of [1533, 1566]) {
+        const label = dpr + " " + hash + " @" + ms;
+        const marks = h.marksOf();
+        const ops = h.tick(ms);
+        const slots = Object.keys(h.evaluate("failureLayers")).filter((slot) => slot.indexOf("backdropPixels:") === 0);
+        const prepared = slots.map((slot) => h.evaluate("failureLayers")[slot].canvas);
+        const reads = h.sinceMarks(marks).flat().filter((op) => op[0] === "drawImage" && op[1] === h.canvas);
+        assert.strictEqual(reads.length, failedCount, label + ": one direct downscale per failed tile");
+        for (const canvas of prepared) {
+          const own = h.streamOf(canvas).slice(marks.get(canvas.contextId) || 0).filter((op) => op[0] === "drawImage");
+          if (own.length === 0) continue;
+          assert.ok(own.length === 1 && own[0][1] === h.canvas, label + ": prepared from the canvas before the tiles draw");
+        }
+        const upscales = ops.filter((op) => op[0] === "drawImage" && prepared.indexOf(op[1]) >= 0);
+        assert.strictEqual(upscales.length, failedCount, label + ": every failed tile upscales its prepared bitmap");
+        const generic = h.evaluate("failureLayers.backdropPixels");
+        if (generic) {
+          assert.strictEqual(h.streamOf(generic.canvas).slice(marks.get(generic.canvas.contextId) || 0)
+            .filter((op) => op[0] === "drawImage").length, 0, label + ": no fallback downscale");
+        }
+      }
+      assert.strictEqual(h.evaluate("failureDirectBackdropMissed"), false, dpr + " " + hash + ": no miss");
+      assert.deepStrictEqual(h.errors, [], dpr + " " + hash + ": no caught render errors");
+    }
+    assert.ok(fractional > 0, "some tile rects land on fractional device pixels");
+  });
+
+  test("S4d alert: a prepared-tile miss pixelates a whole-canvas snapshot, never the live canvas, until the alert stops", () => {
+    const { h } = alertRun(sceneDir, "#tiles=failed,failed&columns=2&rows=1&gap=7&duration=99999", [300, 900, 1500], { dpr: 1.25 });
+    h.evaluate("var s4dPrepare = prepareDirectBackdropPixels; prepareDirectBackdropPixels = function () {"
+      + "  var direct = s4dPrepare(); if (direct) failureDirectBackdropPixels = {}; return direct; };");
+    const backdropReads = (marks, slot) => {
+      const layer = h.evaluate("failureLayers")[slot];
+      return layer ? h.streamOf(layer.canvas).slice(marks.get(layer.canvas.contextId) || 0).filter((op) => op[0] === "drawImage") : [];
+    };
+    let marks = h.marksOf();
+    h.tick(1533);
+    const snapshot = h.evaluate("failureLayers.backdrop");
+    assert.ok(snapshot, "a whole-canvas snapshot is taken on the miss");
+    assert.deepStrictEqual(backdropReads(marks, "backdrop").map((op) => op.slice(1)), [[h.canvas, 0, 0]], "one snapshot copy");
+    const pixels = backdropReads(marks, "backdropPixels");
+    assert.strictEqual(pixels.length, 2, "both tiles pixelated");
+    assert.ok(pixels.every((op) => op[1] === snapshot.canvas), "pixelated from the snapshot, never the live canvas");
+    assert.strictEqual(h.evaluate("failureDirectBackdropMissed"), true, "the miss is remembered");
+    // Later frames take the reference snapshot up front (no direct downscale, no miss).
+    marks = h.marksOf();
+    h.tick(1566);
+    assert.deepStrictEqual(h.sinceMarks(marks).flat().filter((op) => op[0] === "drawImage" && op[1] === h.canvas).map((op) => op.length),
+      [4], "only the whole-canvas snapshot reads the canvas");
+    assert.ok(backdropReads(marks, "backdropPixels").every((op) => op[1] === snapshot.canvas));
+    // Released with the overlay: a new alert prepares its tiles directly again.
+    h.evaluate("hide(); prepareDirectBackdropPixels = s4dPrepare;");
+    h.tick(1600);
+    assert.strictEqual(h.evaluate("failureDirectBackdropMissed"), false, "reset when the overlay stops");
+    h.evaluate("startShowing(['failed'], 1, 1, 0, 99999)");
+    [1700, 2100, 2700, 3700].forEach(h.tick);
+    marks = h.marksOf();
+    h.tick(3733);
+    assert.strictEqual(backdropReads(marks, "backdropPixels:0").filter((op) => op[1] === h.canvas).length, 1, "direct again");
+    assert.strictEqual(backdropReads(marks, "backdrop").length, 0, "no snapshot");
+    assert.deepStrictEqual(h.errors, [], "no caught render errors");
+  });
+
   test("S4b alert: mini keeps the reference see-through, per-frame modules and backdrop copy (only the static bake)", () => {
     const h = harness(sceneDir, { variant: "mini", width: 240, height: 240,
       hash: "#tiles=failed,warning&columns=2&rows=1&gap=8&duration=99999" });
@@ -298,6 +396,7 @@ function registerSparks(test, sceneDir) {
     const check = (label, ms, tilesShown) => {
       h.evaluate("s4bSparkCalls = 0; s4bHookCalls = 0");
       const marks = h.marksOf();
+      const frameStart = h.main.length;
       const ops = h.tick(ms);
       assert.strictEqual(h.evaluate("s4bSparkCalls"), 1, label + " @" + ms + ": one spark pass");
       assert.strictEqual(h.evaluate("s4bHookCalls"), 0, label + " @" + ms + ": no second spark pass through the hook");
@@ -307,7 +406,18 @@ function registerSparks(test, sceneDir) {
       assert.deepStrictEqual(modes[modes.length - 1], ["=globalCompositeOperation", "lighter"], "stamped additively");
       const layer = h.evaluate("seeThroughSparkLayer").canvas;
       assert.strictEqual(ops[stamp][1], layer);
-      const blits = h.sinceMarks(marks).flat().filter((op) => op[0] === "drawImage" && op[1] === layer);
+      // S4d (review SUGGESTION): the layer draws at the plain scene scale and is composited at identity and alpha 1,
+      // so the scene context must hold exactly that state where the reference drew the sparks onto it.
+      let enter = stamp;
+      while (enter > 0 && ops[enter][0] !== "save") enter--;
+      const state = sceneStateAt(h.main, frameStart + enter);
+      assert.deepStrictEqual(state.m, [h.evaluate("canvasScaleX"), 0, 0, h.evaluate("canvasScaleY"), 0, 0],
+        label + " @" + ms + ": the scene context is at the plain scene scale");
+      assert.strictEqual(state.alpha, 1, label + " @" + ms + ": the scene context alpha is 1");
+      const layerOps = h.streamOf(layer).slice(marks.get(layer.contextId) || 0);
+      const cleared = layerOps.findIndex((op) => op[0] === "clearRect");
+      assert.deepStrictEqual(json(layerOps[cleared + 1]), ["setTransform", state.m[0], 0, 0, state.m[3], 0, 0],
+        label + " @" + ms + ": the layer draws the sparks in that same transform");      const blits = h.sinceMarks(marks).flat().filter((op) => op[0] === "drawImage" && op[1] === layer);
       assert.strictEqual(blits.length, 1 + 2 * tilesShown, label + " @" + ms + ": one scene stamp + one blit per band");
       assert.deepStrictEqual([layer.width, layer.height], [h.canvas.width, h.canvas.height], "canvas-sized layer");
     };

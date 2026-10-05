@@ -335,9 +335,18 @@ function drawFailureOverlayCached(g, tileOffsetX, tileOffsetY, sceneW, sceneH, s
 //     origin) and its two columns are stamped every frame.
 //   - Backdrop: a shown FAILED tile pixelates the scene canvas as the scene drew it. Every such tile is downscaled
 //     straight from the canvas before any tile draws (what the whole-canvas copy preserved), so the full-canvas copy
-//     is skipped; a tile still revealing keeps the reference copy.
+//     is skipped; a tile still revealing keeps the reference copy. S4d: producer and consumer key a prepared tile with
+//     the same failureDirectBackdropKey; a miss never downscales the live canvas (earlier tiles of the frame may have
+//     drawn into it) but takes the reference whole-canvas snapshot, and the overlay keeps that snapshot path (taken
+//     before any tile draws) until it stops.
 var failureModuleCache = {};
 var failureDirectBackdropPixels = null;
+var failureDirectBackdropMissed = false;
+var failureDirectBackdropSnapshot = null;
+
+function failureDirectBackdropKey(deviceX, deviceY, deviceW, deviceH, cell) {
+  return deviceX + "|" + deviceY + "|" + deviceW + "|" + deviceH + "|" + cell;
+}
 
 function alertFullWallpaper() {
   return typeof document !== "undefined" && !(typeof isMiniVariant !== "undefined" && isMiniVariant === true);
@@ -495,7 +504,8 @@ function drawFailureOverlayBands(g, tileOffsetX, tileOffsetY, sceneW, sceneH, sc
 // Called by captureBackdropIfNeeded: when every pixelating tile is shown, downscale each straight from the canvas.
 function prepareDirectBackdropPixels() {
   failureDirectBackdropPixels = null;
-  if (!alertFullWallpaper()) return null;
+  failureDirectBackdropSnapshot = null;
+  if (!alertFullWallpaper() || failureDirectBackdropMissed) return null;
   var rects = tileRects();
   var jobs = [];
   for (var i = 0; i < tiles.length && i < rects.length; i++) {
@@ -516,7 +526,7 @@ function prepareDirectBackdropPixels() {
     var pixels = failureLayer(slot, pixelWidth, pixelHeight, false);
     pixels.imageSmoothingEnabled = true;
     pixels.drawImage(canvas, x, y, w, h, 0, 0, pixelWidth, pixelHeight);
-    prepared[[x, y, w, h, cell].join("|")] = failureLayers[slot].canvas;
+    prepared[failureDirectBackdropKey(x, y, w, h, cell)] = failureLayers[slot].canvas;
   }
   failureDirectBackdropPixels = prepared;
   return { canvas: canvas };
@@ -604,7 +614,7 @@ function applyFailureShake(elapsed) {
 function drawTilePixelated(source, sourceX, sourceY, sourceW, sourceH, cell, slot, alpha, tileDeviceX, tileDeviceY, tileDeviceW, tileDeviceH) {
   // Scene optimization begin (S4b): a tile downscaled up front by prepareDirectBackdropPixels is only upscaled here.
   var prepared = failureDirectBackdropPixels && source === canvas
-    ? failureDirectBackdropPixels[[sourceX, sourceY, sourceW, sourceH, cell].join("|")] : null;
+    ? failureDirectBackdropPixels[failureDirectBackdropKey(sourceX, sourceY, sourceW, sourceH, cell)] : null;
   if (prepared) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -613,6 +623,15 @@ function drawTilePixelated(source, sourceX, sourceY, sourceW, sourceH, cell, slo
     ctx.drawImage(prepared, tileDeviceX, tileDeviceY, tileDeviceW, tileDeviceH);
     ctx.restore();
     return;
+  }
+  if (failureDirectBackdropPixels && source === canvas) {
+    // A miss: pixelate the reference whole-canvas snapshot (once this frame), never the live canvas.
+    failureDirectBackdropMissed = true;
+    if (!failureDirectBackdropSnapshot) {
+      failureDirectBackdropSnapshot = failureLayer("backdrop", canvas.width, canvas.height, false);
+      failureDirectBackdropSnapshot.drawImage(canvas, 0, 0);
+    }
+    source = failureDirectBackdropSnapshot.canvas;
   }
   // Scene optimization end (S4b).
   var pixelWidth = Math.max(1, Math.ceil(tileDeviceW / cell));
@@ -933,6 +952,7 @@ function renderAlertTile(rect, kind, ms, sceneW, sceneH, sceneTime, backdrop) {
 function renderAlertOverlay(ms, sceneW, sceneH, sceneTime) {
   // Scene optimization begin (S4b): free the cached alert layers once the overlay has stopped.
   if (!animating) {
+    failureDirectBackdropMissed = false;
     for (var moduleKey in failureModuleCache) { releaseFailureModuleCache(); break; }
     for (var cachedKey in failureStaticCache) { releaseFailureStaticCache(); break; }
     return;

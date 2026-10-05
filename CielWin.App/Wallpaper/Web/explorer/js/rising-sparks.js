@@ -84,7 +84,11 @@ const RISING_SPARK_TRAIL_SAMPLES = 6;
 // (CieLinux: 0.5) and spark sizes every 0.05. Cells are laid out in rows at most 4096 device px wide. Young sparks
 // keep the strokes. Sprites are placed in the context's own transform, so the alert see-through hook (a
 // translated tile layer) and the S4b spark layer get the same streaks. The atlas is rebuilt only when W, H or DPR
-// change.
+// change. S4d: the atlas area grows with (H x DPR)^2, so a geometry whose atlas would exceed
+// RISING_SPARK_FULL_ATLAS_MAX_SIDE / _MAX_PIXELS, or whose bake fails (no 2D context, allocation error), is
+// remembered and drawn with the reference strokes (the exact pre-S4c drawing) instead of retrying every frame.
+const RISING_SPARK_FULL_ATLAS_MAX_SIDE = 16384; // device px
+const RISING_SPARK_FULL_ATLAS_MAX_PIXELS = 1 << 25; // ~33.5 Mpx (~134 MB RGBA); 3440x1440@1 needs ~2.2 Mpx
 const RISING_SPARK_FULL_SPRITE_PAD = 3; // CSS px around the streak: head radius 1.82 plus anti-aliasing
 const RISING_SPARK_FULL_SIZE_MIN = 0.6; // spark.size = mix(0.6, 1.4, random()) in risingSparkAt
 const RISING_SPARK_FULL_SIZE_MAX = 1.4;
@@ -94,10 +98,42 @@ const RISING_SPARK_FULL_HALF_GAIN = [1, 0.5]; // bake gain per trail half (see a
 const RISING_SPARK_FULL_ATLAS_MAX_WIDTH = 4096; // device px
 const risingSparkFullTrail = new Float64Array(6); // trail samples 0, 3 and 6 (x, y)
 let risingSparkFullAtlas = null;
+let risingSparkFullAtlasFailed = null; // { width, height, dpr } of the last geometry without an atlas
 
+// Returns the atlas for this geometry, or null when it has none (oversize or failed bake: reference strokes).
 function risingSparkFullAtlasFor(width, height, dpr) {
   const cached = risingSparkFullAtlas;
   if (cached !== null && cached.width === width && cached.height === height && cached.dpr === dpr) return cached;
+  const failed = risingSparkFullAtlasFailed;
+  if (failed !== null && failed.width === width && failed.height === height && failed.dpr === dpr) return null;
+  let canvas = null;
+  try {
+    return risingSparkFullAtlasBake(width, height, dpr, (atlasWidth, atlasHeight) => {
+      if (!(atlasWidth <= RISING_SPARK_FULL_ATLAS_MAX_SIDE && atlasHeight <= RISING_SPARK_FULL_ATLAS_MAX_SIDE
+        && atlasWidth * atlasHeight <= RISING_SPARK_FULL_ATLAS_MAX_PIXELS)) {
+        throw new Error('spark atlas ' + atlasWidth + 'x' + atlasHeight + ' exceeds the size cap');
+      }
+      canvas = document.createElement('canvas');
+      canvas.width = atlasWidth;
+      canvas.height = atlasHeight;
+      const bake = canvas.getContext('2d');
+      if (!bake) throw new Error('spark atlas has no 2D context');
+      return { canvas, bake };
+    });
+  } catch (error) {
+    if (canvas !== null) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    risingSparkFullAtlas = null;
+    risingSparkFullAtlasFailed = { width, height, dpr };
+    if (typeof console !== 'undefined' && console.warn) console.warn('[explorer-scene] rising sparks drawn without the atlas:', String(error));
+    return null;
+  }
+}
+
+// Bakes the atlas for this geometry into the canvas `allocate(width, height)` returns (it throws when it cannot).
+function risingSparkFullAtlasBake(width, height, dpr, allocate) {
   // A trail half spans half the trail seconds: its vertical extent is exactly speed * height * halfSeconds, and
   // its horizontal extent at most |tilt| times that (the drift rate never exceeds the tilt).
   const halfSeconds = RISING_SPARK_TRAIL_SECONDS / 2;
@@ -114,10 +150,7 @@ function risingSparkFullAtlasFor(width, height, dpr) {
   const cellHeight = Math.ceil(2 * pad * dpr);
   const perRow = Math.max(1, Math.floor(RISING_SPARK_FULL_ATLAS_MAX_WIDTH / cellWidth));
   const cellCount = sizeCount * 2 * lengthCount;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.min(cellCount, perRow) * cellWidth;
-  canvas.height = Math.ceil(cellCount / perRow) * cellHeight;
-  const bake = canvas.getContext('2d');
+  const { canvas, bake } = allocate(Math.min(cellCount, perRow) * cellWidth, Math.ceil(cellCount / perRow) * cellHeight);
   bake.globalCompositeOperation = 'lighter';
   bake.lineCap = 'round';
   // Cell index (sizeIndex * 2 + half) * lengthCount + col: the half's tail at (pad, pad), its head end at
