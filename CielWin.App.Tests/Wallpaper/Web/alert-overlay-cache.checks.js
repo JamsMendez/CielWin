@@ -30,7 +30,9 @@ const PRE_S4B = {
 
 const S4B_BLOCKS = /^[ \t]*\/\/ Scene optimization begin \(S4b\)[^\n]*\n[\s\S]*?^[ \t]*\/\/ Scene optimization end \(S4b\)\.\n(\n(?=\/\/|function|const|let|var))?/gm;
 const normalize = (text) => text.replace(/\r\n/g, "\n");
-const stripS4b = (text) => normalize(text).replace(S4B_BLOCKS, "");
+// R1 (alert-title-reach.checks.js) came after S4b, so its blocks go too.
+const R1_BLOCKS = /^[ \t]*\/\/ Linux port begin \(R1\)[^\n]*\n[\s\S]*?^[ \t]*\/\/ Linux port end \(R1\)\.\n(\n(?=\/\/|function|const|let|var))?/gm;
+const stripS4b = (text) => normalize(text).replace(R1_BLOCKS, "").replace(S4B_BLOCKS, "");
 const sha256 = (text) => crypto.createHash("sha256").update(text).digest("hex");
 
 // Loads the real page (index.html's <script> order) into one vm realm. Every canvas gets its own recording

@@ -47,9 +47,15 @@ public sealed class TrayIconHostTests
         Assert.Equal(Enum.GetValues<TrayMenuEntry>().Order(), TrayIconHost.MenuOrder.Order());
     }
 
+    [Fact]
+    public void TheModeMenu_IsLabelledSceneMode()
+    {
+        Assert.Equal("Scene Mode", TrayIconHost.ModeMenuLabel);
+    }
+
     [Theory]
-    [InlineData(WallpaperMode.Scene, "Scene wallpaper")]
-    [InlineData(WallpaperMode.SceneMini, "Mini window")]
+    [InlineData(WallpaperMode.Scene, "Scene Wallpaper")]
+    [InlineData(WallpaperMode.SceneMini, "Scene Mini")]
     public void ModeLabel_NamesEachMode(WallpaperMode mode, string expected)
     {
         Assert.Equal(expected, TrayIconHost.ModeLabel(mode));

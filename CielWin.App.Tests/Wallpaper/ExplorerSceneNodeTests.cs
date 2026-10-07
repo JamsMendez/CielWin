@@ -41,12 +41,12 @@ public sealed class ExplorerSceneNodeTests
     /// texture at LOAD time (verbatim reference code, unrelated to D6a) that costs several real
     /// seconds per FRESH vm sandbox realm under Node (no JIT warm-up across separate
     /// vm.createContext() realms, unlike a real browser tab that loads this scene exactly once).
-    /// explorer-scene.tests.js now calls loadPage() 18 times: measured at ~157s alone and ~218s
-    /// while the rest of the suite runs in parallel on a 16-thread dev machine, and a 2-core CI
-    /// runner is several times slower. This is a hang guard, not a performance budget, so it is
-    /// deliberately far above any observed run.
+    /// explorer-scene.tests.js now also loads the page for the alert title reach checks: measured
+    /// at ~204s alone on a 16-thread dev machine, and a 2-core CI runner is about 5x slower (~17
+    /// minutes). This is a hang guard, not a performance budget, so it is deliberately far above
+    /// any observed run.
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 240s: timed out on the 2-core GitHub Actions runner
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(30); // was 15 min: ~5x of the ~204s local run left no margin on the 2-core GitHub Actions runner
 
     [RequiresNodeFact]
     public void ExplorerSceneHarness_PassesAgainstTheRealShippedPage()

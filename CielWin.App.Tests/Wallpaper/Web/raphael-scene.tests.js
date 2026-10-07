@@ -25,6 +25,7 @@ const { URLSearchParams } = require("url");
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
 const blurFreeGlowChecks = require(path.join(__dirname, "blur-free-glow.checks.js"));
+const alertTitleReachChecks = require(path.join(__dirname, "alert-title-reach.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node raphael-scene.tests.js <path-to-wallpaper-raphael-directory>");
@@ -73,6 +74,7 @@ function make2dContext() {
   var gradient = { addColorStop: function () {} };
   var stack = [];
   var tx = 0, ty = 0;
+  var drawImages = [];
   return {
     context: new Proxy({}, {
       get: function (target, prop) {
@@ -96,6 +98,9 @@ function make2dContext() {
           return function (a, b, c, d, e, f) { tx = e || 0; ty = f || 0; };
         }
         if (prop === "__lineWidthHistory") return lineWidthHistory;
+        if (prop === "drawImage") {
+          return function (image) { drawImages.push({ image: image, offset: { x: tx, y: ty } }); };
+        }
       if (prop in slots) return slots[prop];
         return function () { /* no-op: beginPath/rect/clip/fill/drawImage/ellipse/arc/rotate/scale/... */ };
       },
@@ -109,6 +114,8 @@ function make2dContext() {
     // Live snapshot of the CTM's current translation, read at the exact moment a spied call fires.
     currentOffset: function () { return { x: tx, y: ty }; },
     fillStyleHistory: fillStyleHistory,
+    // R1: every drawImage, with the CTM translation it was stamped at.
+    drawImages: drawImages,
   };
 }
 
@@ -223,6 +230,7 @@ function loadPage(options) {
     ctx: ctx2d,
     messageListenerCount: messageListeners.length,
     currentOffset: made.currentOffset,
+    drawImages: made.drawImages,
     dispatchHostMessage: function (data) {
       messageListeners.forEach(function (listener) { listener({ data: data }); });
     },
@@ -293,21 +301,20 @@ test("a real 'show'/'hide' host message drives the overlay, and a malformed mess
   assert.strictEqual(page.sandbox.animating, false, "expected the real 'hide' message to stop the overlay");
 });
 
-// ---- Case 4 (KEY property): the see-through hook redraws the REAL gold ring -----------------------
-// js/see-through-hook.js's sceneSeeThroughLayer(g, sceneW, sceneH, progress) must call
-// js/glyphs.js's drawGlyphRing with the SAME radius/rotation/glyph pool js/layers.js's own
-// drawGlyphRings(cx, cy, p) used to draw the gold ring THIS frame -- proved two ways: (a) spying on
-// drawGlyphRings itself captures the scene's own real `p` this frame, independently recomputing the
-// expected rotation/radius from that `p` via the SAME pure geometry functions (coreRadius/
-// glyphRingAnnuli) the scene's own gold-ring draw and the hook both read; (b) spying on drawGlyphRing
-// (glyphs.js) captures what the hook ACTUALLY drew with. A 2x2 grid makes tile[3] (bottom-right) a
-// non-origin tile, proving the shared overlay's own tile-offset translate (drawSeeThroughIntersections,
-// shared/js/alert-overlay.js) is applied before the hook draws -- see this file's own CTM tracker.
-// "draws NO other ring": drawGlyphRing (unlike drawOutlineGlyphRing, the SPRITE-based real paint path
-// for BOTH gold and blue) is called ONLY by this hook in the shipped page -- one call per shown tile
-// proves the hook draws exactly one ring, never a second (blue) one.
+// ---- Case 4 (KEY property): the see-through hook stamps the REAL gold ring -------------------------
+// R1 (odd/tasks/cielinux-ports.md T2, CieLinux 5a92a38): js/see-through-hook.js's sceneSeeThroughLayer(g, sceneW,
+// sceneH, progress) stamps the scene's own gold outline-glyph sprites (sprites.outlineGlyphsGold, the ones
+// js/layers.js's drawGlyphRings stamps through drawOutlineGlyphRing) at the SAME radius/rotation the scene used
+// this frame -- proved two ways: (a) spying on drawGlyphRings itself captures the scene's own real `p` this frame,
+// independently recomputing the expected rotation/radius from that `p` via the SAME pure geometry functions
+// (coreRadius/glyphRingAnnuli) the scene's own gold-ring draw reads; (b) the mock context records every drawImage
+// with its CTM translation, so the stamps the hook ACTUALLY made are read back per hook call. A 2x2 grid makes
+// tile[3] (bottom-right) a non-origin tile, proving the shared overlay's own tile-offset translate
+// (drawSeeThroughIntersections, shared/js/alert-overlay.js) is applied before the hook draws. "draws NO other
+// ring": exactly one gold sprite set per shown tile, never the blue ring's sprites, never the stroke fallback
+// (glyphs.js's drawGlyphRing).
 
-test("the see-through hook redraws the gold ring with the scene's own radius/rotation/pool, offset by a non-origin tile, and draws no other ring", function () {
+test("the see-through hook stamps the gold ring sprites at the scene's own radius/rotation, offset by a non-origin tile, and draws no other ring", function () {
   var page = loadPage({ innerWidth: 1000, innerHeight: 800 });
 
   var sceneProgressCalls = [];
@@ -317,11 +324,21 @@ test("the see-through hook redraws the gold ring with the scene's own radius/rot
     return originalDrawGlyphRings.apply(this, arguments);
   };
 
-  var hookCalls = [];
+  var strokeRingCalls = 0;
   var originalDrawGlyphRing = page.sandbox.drawGlyphRing;
-  page.sandbox.drawGlyphRing = function (context, pool, cx, cy, radius, count, glyphSize, startAngle, rotation, color, lineWidth, lightFn) {
-    hookCalls.push({ pool: pool, radius: radius, rotation: rotation, offset: page.currentOffset() });
+  page.sandbox.drawGlyphRing = function () {
+    strokeRingCalls++;
     return originalDrawGlyphRing.apply(this, arguments);
+  };
+
+  var hookCalls = [];
+  var originalHook = page.sandbox.sceneSeeThroughLayer;
+  page.sandbox.sceneSeeThroughLayer = function () {
+    var call = { offset: page.currentOffset(), start: page.drawImages.length };
+    var result = originalHook.apply(this, arguments);
+    call.stamps = page.drawImages.slice(call.start);
+    hookCalls.push(call);
+    return result;
   };
 
   // Four "warning" tiles (shakeMs 0): all reach "shown" together, avoiding any FAILED-shake timing
@@ -333,54 +350,44 @@ test("the see-through hook redraws the gold ring with the scene's own radius/rot
 
   sceneProgressCalls.length = 0;
   hookCalls.length = 0; // isolate the NEXT frame's calls
+  strokeRingCalls = 0;
   page.sandbox.render(800);
 
   assert.strictEqual(sceneProgressCalls.length, 1,
     "test setup sanity: expected exactly one real drawGlyphRings call (the scene's own) this frame");
   var sceneProgress = sceneProgressCalls[0];
 
-  assert.strictEqual(hookCalls.length, 4,
-    "expected exactly one drawGlyphRing call per shown tile (4), proving the hook draws no other ring, saw " + hookCalls.length);
+  assert.strictEqual(hookCalls.length, 4, "expected exactly one hook call per shown tile (4), saw " + hookCalls.length);
+  assert.strictEqual(strokeRingCalls, 0, "expected the baked sprites, never the stroke fallback ring");
 
-  // Independently recompute the TRUE gold-ring radius/rotation from the scene's own captured
-  // progress, via the same pure geometry (function declarations -- reachable on the sandbox global,
-  // unlike config.js's `let W`/`H` and `const TAU`/`GLYPH_RING_GOLD_ROTATION_SPEED`, none of which
-  // attach to the vm context's global object -- see the RING_GLYPH_POOL remark below for the same
-  // reasoning) the scene's own drawGlyphRings and the hook both read. W/H/TAU are recomputed from
-  // this test's own known loadPage() inputs instead (resize()'s cssWidth/cssHeight fall back to
-  // window.innerWidth/innerHeight when the mock canvas has no getBoundingClientRect, i.e. exactly
-  // the 1000x800 passed above); GLYPH_RING_GOLD_ROTATION_SPEED is config.js's own documented literal
-  // (0.48, "RAP-17... x4").
+  // Independently recompute the TRUE gold-ring radius/rotation from the scene's own captured progress, via the
+  // same pure geometry (function declarations, reachable on the sandbox global) the scene's own drawGlyphRings
+  // reads. W/H come from this test's own loadPage() inputs; GLYPH_RING_GOLD_ROTATION_SPEED is config.js's own
+  // documented literal (0.48, "RAP-17... x4").
   var sceneW = 1000, sceneH = 800;
   var r = page.sandbox.coreRadius(Math.min(sceneW, sceneH));
   var gold = page.sandbox.glyphRingAnnuli(r)[1];
   var expectedRadius = (gold.innerRadius + gold.outerRadius) / 2;
   var GLYPH_RING_GOLD_ROTATION_SPEED = 0.48;
   var expectedRotation = sceneProgress * (Math.PI * 2) * GLYPH_RING_GOLD_ROTATION_SPEED;
+  var cx = sceneW * 0.505, cy = sceneH * 0.515;
 
-  // RING_GLYPH_POOL (js/glyphs.js) is a top-level `const` -- like config.js's own `ctx`/`canvas`
-  // (see processing-scene.tests.js's own remarks), it never becomes a property of the vm sandbox's
-  // global object, so it cannot be read back as page.sandbox.RING_GLYPH_POOL for a direct identity
-  // check. Proved instead by IDENTITY ACROSS CALLS: every tile's hook call this frame must receive
-  // the exact SAME pool object (never a fresh/copied one built per call) -- the only way that can
-  // hold is if the hook keeps reading the one real RING_GLYPH_POOL reference every time -- plus its
-  // length matching RING_GLYPH_POOL_SIZE (96, glyphs.js -- also const, same reasoning) and its shape
-  // matching a real hieroglyph stroke pool (an array of stroke arrays, each stroke a 'line'/'curve'/
-  // 'dot' descriptor).
-  var expectedPool = hookCalls[0].pool;
-  assert.ok(Array.isArray(expectedPool) && expectedPool.length === 96,
-    "expected the hook's pool to be the real 96-glyph RING_GLYPH_POOL, saw length " + (expectedPool && expectedPool.length));
-  assert.ok(Array.isArray(expectedPool[0]) && expectedPool[0].every(function (stroke) {
-    return stroke && (stroke.type === 'line' || stroke.type === 'curve' || stroke.type === 'dot');
-  }), "expected the hook's pool entries to be real hieroglyph stroke arrays");
+  // `sprites` is config.js's top-level `let` (not a sandbox property), read through the realm itself.
+  var goldSet = vm.runInContext("sprites.outlineGlyphsGold", page.sandbox);
+  var blueSet = vm.runInContext("sprites.outlineGlyphs", page.sandbox);
+  assert.ok(Array.isArray(goldSet) && goldSet.length > 0, "test setup sanity: the gold ring sprites are baked");
 
   hookCalls.forEach(function (call, index) {
-    assert.strictEqual(call.pool, expectedPool,
-      "expected hook call #" + index + " to reuse the SAME pool object every other tile's call used this frame");
-    assert.ok(Math.abs(call.radius - expectedRadius) < 1e-9,
-      "expected hook call #" + index + " radius " + call.radius + " to equal the true gold radius " + expectedRadius);
-    assert.ok(Math.abs(call.rotation - expectedRotation) < 1e-9,
-      "expected hook call #" + index + " rotation " + call.rotation + " to equal the scene's own rotation " + expectedRotation);
+    assert.strictEqual(call.stamps.length, goldSet.length,
+      "expected hook call #" + index + " to stamp one sprite per gold ring slot");
+    call.stamps.forEach(function (stamp, i) {
+      assert.strictEqual(stamp.image, goldSet[i].canvas, "hook call #" + index + " stamp #" + i + " is the gold sprite");
+      assert.ok(blueSet.every(function (sprite) { return sprite.canvas !== stamp.image; }), "never a blue ring sprite");
+      var angle = expectedRotation + (i / goldSet.length) * Math.PI * 2;
+      assert.ok(Math.abs(stamp.offset.x - (call.offset.x + cx + Math.cos(angle) * expectedRadius)) < 1e-6 &&
+        Math.abs(stamp.offset.y - (call.offset.y + cy + Math.sin(angle) * expectedRadius)) < 1e-6,
+        "hook call #" + index + " stamp #" + i + " sits on the true gold ring at the scene's own rotation");
+    });
   });
 
   var rects = page.sandbox.tileRects();
@@ -797,6 +804,9 @@ test("the nebula fragment shader requests highp float (NEB-1)", function () {
 
 // S4a (odd/tasks/scene-optimizations.md): PERF-5 baked glows instead of per-frame shadowBlur, see blur-free-glow.checks.js.
 blurFreeGlowChecks.register(test, sceneDir, "raphael");
+
+// R1 (odd/tasks/cielinux-ports.md T2): alert title reach, see alert-title-reach.checks.js.
+alertTitleReachChecks.register(test, sceneDir, "raphael");
 
 var failures = [];
 tests.forEach(function (t) {

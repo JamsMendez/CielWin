@@ -20,7 +20,7 @@ public sealed class TrayIconHost : IDisposable
 
     public TrayIconHost(TrayMenuController controller, Action<string> trace)
     {
-        var modeItem = new ToolStripMenuItem("Wallpaper mode") { Image = Track(TrayGlyphs.Render(TrayGlyphs.Mode)) };
+        var modeItem = new ToolStripMenuItem(ModeMenuLabel) { Image = Track(TrayGlyphs.Render(TrayGlyphs.Mode)) };
         var modeItems = new List<(WallpaperMode Mode, ToolStripMenuItem Item)>();
         foreach (var mode in TrayMenuController.Modes)
         {
@@ -155,6 +155,8 @@ public sealed class TrayIconHost : IDisposable
         TrayMenuEntry.Exit,
     ];
 
+    public const string ModeMenuLabel = "Scene Mode";
+
     public const string AlertSoundsLabel = "Alert sounds";
 
     public static string SoundEntryLabel(TrayMenuEntry entry) => entry switch
@@ -168,8 +170,8 @@ public sealed class TrayIconHost : IDisposable
 
     public static string ModeLabel(WallpaperMode mode) => mode switch
     {
-        WallpaperMode.Scene => "Scene wallpaper",
-        WallpaperMode.SceneMini => "Mini window",
+        WallpaperMode.Scene => "Scene Wallpaper",
+        WallpaperMode.SceneMini => "Scene Mini",
         _ => mode.ToString(),
     };
 

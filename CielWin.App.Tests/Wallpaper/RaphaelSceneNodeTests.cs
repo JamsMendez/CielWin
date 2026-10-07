@@ -38,7 +38,7 @@ public sealed class RaphaelSceneNodeTests
     /// that on the 2-core GitHub Actions runner); this only exists to turn "the process manager wedged"
     /// into a reported test failure instead of a `dotnet test` run that never comes back.
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 30s: timed out on the 2-core GitHub Actions runner
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(30); // 30 min like explorer: the 2-core GitHub Actions runner is ~5x slower than a dev machine
 
     [RequiresNodeFact]
     public void RaphaelSceneHarness_PassesAgainstTheRealShippedPage()

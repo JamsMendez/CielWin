@@ -27,6 +27,7 @@ const constellationRingChecks = require(path.join(__dirname, "constellation-ring
 
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
+const alertTitleReachChecks = require(path.join(__dirname, "alert-title-reach.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node idle-scene.tests.js <path-to-wallpaper-idle-directory>");
@@ -860,6 +861,9 @@ test("full frame: the vignette gradient is created once per geometry, with the r
   assert.strictEqual(vignettesFor(800, 400).length, 1, "rebuilt once on resize");
   assert.strictEqual(page.consoleErrorCalls.length, 0, "every frame rendered without a caught error");
 });
+
+// R1 (odd/tasks/cielinux-ports.md T2): alert title reach, see alert-title-reach.checks.js.
+alertTitleReachChecks.register(test, sceneDir, "idle");
 
 var failures = [];
 tests.forEach(function (t) {

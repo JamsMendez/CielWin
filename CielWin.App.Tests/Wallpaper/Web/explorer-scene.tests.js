@@ -27,6 +27,7 @@ const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js")
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
 const alertOverlayCacheChecks = require(path.join(__dirname, "alert-overlay-cache.checks.js"));
 const risingSparkAtlasChecks = require(path.join(__dirname, "rising-spark-atlas.checks.js"));
+const alertTitleReachChecks = require(path.join(__dirname, "alert-title-reach.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node explorer-scene.tests.js <path-to-wallpaper-explorer-directory>");
@@ -952,6 +953,9 @@ alertOverlayCacheChecks.register(test, sceneDir, "explorer");
 
 // S4c (odd/tasks/scene-optimizations.md): S4c pins and the full-wallpaper spark atlas, see rising-spark-atlas.checks.js.
 risingSparkAtlasChecks.register(test, sceneDir);
+
+// R1 (odd/tasks/cielinux-ports.md T2): alert title reach, see alert-title-reach.checks.js.
+alertTitleReachChecks.register(test, sceneDir, "explorer");
 
 var failures = [];
 tests.forEach(function (t) {
