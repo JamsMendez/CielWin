@@ -63,8 +63,8 @@ dotnet test CielWin.sln
 
 | Mode (`wallpaper-mode`) | Tray label | What you see |
 |-------------------------|------------|--------------|
-| `scene` (default) | Scene wallpaper | The scene composited over the desktop wallpaper, full screen |
-| `scene-mini` | Mini window | A small square, always-on-top, click-through scene window in the work area; the desktop background stays as Windows has it |
+| `scene` (default) | Scene Wallpaper | The scene composited over the desktop wallpaper, full screen |
+| `scene-mini` | Scene Mini | A small square, always-on-top, click-through scene window in the work area; the desktop background stays as Windows has it |
 
 Scenes (`scene`): `processing` (default), `explorer`, `idle`, `raphael`.
 
@@ -92,7 +92,7 @@ again (dropped after waiting more than 5 minutes). The mini window is never paus
 
 | Item | Action |
 |------|--------|
-| Wallpaper mode | Switch live between **Scene wallpaper** and **Mini window** (checked item = current) |
+| Scene Mode | Switch live between **Scene Wallpaper** and **Scene Mini** (checked item = current) |
 | Scene | Switch to Processing, Explorer, Idle or Raphael (checked item = current) |
 | Frame rate | Switch the global cap between **30 FPS** and **60 FPS** for every scene and both modes (checked item = current); rebuilds the scene page (see *Frame rate*) |
 | Import failed sound… / Import warning sound… | Pick a `.wav`, `.mp3` or `.m4a` file; it is copied into `%LOCALAPPDATA%\CielWin\sounds\` and played when an alert of that kind appears |
