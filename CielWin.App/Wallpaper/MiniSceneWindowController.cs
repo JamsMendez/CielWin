@@ -1,6 +1,7 @@
 using CielWin.App.Alerts;
 using CielWin.Interop;
 using CielWin.Interop.Win32;
+using System.Windows.Threading;
 using DrawingRectangle = System.Drawing.Rectangle;
 
 namespace CielWin.App.Wallpaper;
@@ -79,6 +80,13 @@ public interface IMiniSceneBrowser : IDisposable
 /// physical pixel size, square. The page runs at the frame-rate cap the controller was built with
 /// (<c>frame-rate</c>, 30 or 60); a rate change replaces the whole window.
 /// </summary>
+/// <remarks>
+/// Cursor dodge: with a dodge desktop and a poll timer, the cursor is read every
+/// <see cref="MiniDodge.PollInterval"/> while the window is shown, and the window glides aside when it comes
+/// near and back once it has gone (<see cref="MiniDodger"/>). Home is the bounds the owner last placed
+/// (<see cref="Show"/>, <see cref="MoveTo"/>, <see cref="GlideTo"/>); each of those cancels a dodge. A dodge
+/// never reaches the owner, so the saved position never changes for one.
+/// </remarks>
 public sealed class MiniSceneWindowController : IMiniSceneWindow
 {
     private readonly Func<IMiniSceneSurface> _surfaceFactory;
@@ -111,12 +119,24 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     private bool _pageReady;
     private string? _pendingAlert;
     private bool _disposed;
+    private readonly IMiniDodgeDesktop? _dodgeDesktop;
+    private readonly Func<TimeSpan, Action, IDisposable>? _schedulePoll;
+    private readonly MiniDodger _dodger = new();
+    // Where the owner placed the window: the dodge's home. Null before the first show.
+    private Rectangle? _home;
+    private IDisposable? _poll;
+    private bool _dodgeFailing;
 
+    /// <param name="dodgeDesktop">Cursor and work area for the cursor dodge; null: no dodge.</param>
+    /// <param name="schedulePoll">Runs a callback on this thread every interval until disposed; null: no dodge.</param>
     public MiniSceneWindowController(
         Func<IMiniSceneSurface> surfaceFactory, IMiniSceneBrowser browser, Action<string>? trace = null,
-        Func<DateTimeOffset>? clock = null, IFrameSource? frames = null, int fps = 60)
+        Func<DateTimeOffset>? clock = null, IFrameSource? frames = null, int fps = 60,
+        IMiniDodgeDesktop? dodgeDesktop = null, Func<TimeSpan, Action, IDisposable>? schedulePoll = null)
     {
         _fps = fps;
+        _dodgeDesktop = dodgeDesktop;
+        _schedulePoll = schedulePoll;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _frames = frames;
         _surfaceFactory = surfaceFactory;
@@ -135,11 +155,26 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
 
     /// <summary>
     /// The real window and WebView2 (its own <c>WebView2Mini</c> user-data folder), gliding on WPF render
-    /// frames. Construct on the UI STA.
+    /// frames and polling the cursor for the dodge on a background-priority dispatcher timer. Construct on
+    /// the UI STA.
     /// </summary>
-    public static MiniSceneWindowController CreateProduction(Action<string>? trace = null, int fps = 60) =>
-        new(() => new Win32MiniSceneWindow(), new WebView2MiniSceneBrowser(), trace,
-            frames: new CompositionTargetFrameSource(), fps: fps);
+    public static MiniSceneWindowController CreateProduction(Action<string>? trace = null, int fps = 60)
+    {
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        return new(() => new Win32MiniSceneWindow(), new WebView2MiniSceneBrowser(), trace,
+            frames: new CompositionTargetFrameSource(), fps: fps, dodgeDesktop: new Win32MiniDodgeDesktop(),
+            schedulePoll: (interval, callback) =>
+            {
+                var timer = new DispatcherTimer(interval, DispatcherPriority.Background, (_, _) => callback(), dispatcher);
+                timer.Start();
+                return new TimerStopper(timer);
+            });
+    }
+
+    private sealed class TimerStopper(DispatcherTimer timer) : IDisposable
+    {
+        public void Dispose() => timer.Stop();
+    }
 
     /// <summary>
     /// The page viewport for a window of <paramref name="bounds"/>: origin at zero and SQUARE (the
@@ -186,6 +221,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         }
 
         _current = bounds;
+        _home = bounds;
+        StartDodge();
 
         // Still usable, but other topmost windows coming to the foreground can then cover it.
         if (!surface.ReassertsTopmost) _trace?.Invoke("mini-window: foreground hook unavailable");
@@ -208,6 +245,23 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     {
         CheckAccess();
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _dodger.Cancel();
+        _home = bounds;
+        PlaceNow(bounds);
+    }
+
+    public void GlideTo(Rectangle bounds)
+    {
+        CheckAccess();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        // A dodge is dropped; the glide starts where the window is, aside or not.
+        _dodger.Cancel();
+        _home = bounds;
+        GlideNow(bounds);
+    }
+
+    private void PlaceNow(Rectangle bounds)
+    {
         StopGlide();
         _current = null; // unknown until Place returns: a throwing Place may have moved the window
         if (_surface is null) return;
@@ -219,13 +273,11 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         if (_attached) _browser.Resize(viewport);
     }
 
-    public void GlideTo(Rectangle bounds)
+    private void GlideNow(Rectangle bounds)
     {
-        CheckAccess();
-        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_frames is null || _surface is null || _current is not { } current || current == bounds)
         {
-            MoveTo(bounds);
+            PlaceNow(bounds);
             return;
         }
 
@@ -259,6 +311,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         CheckAccess();
         if (_disposed) return;
         StopGlide();
+        _poll?.Dispose();
+        _poll = null;
         _disposed = true;
         _browser.Ready -= OnReady;
         _browser.Failed -= OnFailed;
@@ -331,7 +385,7 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
             var now = _clock();
             if (glide.IsComplete(now))
             {
-                MoveTo(glide.To);
+                PlaceNow(glide.To);
                 return;
             }
 
@@ -345,7 +399,7 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
             _trace?.Invoke($"mini-window: glide-frame-failed error={ex.GetType().Name}");
             try
             {
-                MoveTo(glide.To);
+                PlaceNow(glide.To);
             }
             catch (Exception retry)
             {
@@ -353,6 +407,46 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
                 _trace?.Invoke($"mini-window: glide-land-failed error={retry.GetType().Name}");
                 ReportPlacementLost();
             }
+        }
+    }
+
+    private void StartDodge()
+    {
+        if (_dodgeDesktop is null || _schedulePoll is null || _poll is not null) return;
+        _poll = _schedulePoll(MiniDodge.PollInterval, OnDodgePoll);
+    }
+
+    /// <summary>
+    /// One cursor reading. Runs inside the dispatcher, so nothing escapes: a failure forgets the dodge, is
+    /// traced once per failing run, and raises <see cref="PlacementLost"/> so the owner re-places the window
+    /// at home.
+    /// </summary>
+    private void OnDodgePoll()
+    {
+        if (_disposed || _surface is null || _home is not { } home || _dodgeDesktop is not { } desktop) return;
+        try
+        {
+            var step = _dodger.Update(home, desktop.ReadCursor(), desktop.WorkAreaOf(home), _clock());
+            _dodgeFailing = false;
+            switch (step.Action)
+            {
+                case MiniDodgeAction.Dodge when step.Choice is { } choice:
+                    GlideNow(choice.Bounds);
+                    _trace?.Invoke($"mini-window: dodge direction={MiniDodge.Name(choice.Direction)}");
+                    break;
+                case MiniDodgeAction.Return:
+                    GlideNow(home);
+                    _trace?.Invoke("mini-window: dodge return");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _dodger.Cancel();
+            if (_dodgeFailing) return;
+            _dodgeFailing = true;
+            _trace?.Invoke($"mini-window: dodge-failed error={ex.GetType().Name}");
+            ReportPlacementLost();
         }
     }
 

@@ -82,6 +82,26 @@ or **30 FPS**. Choose it from the tray's **Frame rate** submenu.
 The mini window is `monitor height / 5` on a side and sits at one of eight positions of the work
 area (`mini-position`).
 
+### Cursor dodge
+
+Clicks go through the mini window, but it still hides what is under it. When the mouse cursor comes
+near (within 24 px of the window), it glides aside so you can see behind it, and glides back once the
+cursor has stayed away for 400 ms.
+
+- **Direction:** away from the cursor along the dominant axis: a cursor on the right moves it left,
+  above moves it down, below moves it up, on the left moves it right. It moves one window plus 32 px
+  (the 24 px margin and an 8 px gap), clear of the spot it left.
+- **Edges:** the moved window must fit in its monitor's work area (never over the taskbar). If the
+  preferred side does not fit (`top-right` with the cursor on its left), it takes a perpendicular side,
+  the one farther from the cursor first. If none fits, it stays.
+- **Following it:** if the cursor reaches the moved window, it takes another side; lingering over the
+  spot it left keeps it aside.
+- **Saved position:** a dodge never changes `mini-position`. Alt+M / Alt+Shift+M cancel a dodge and
+  glide to the new position from wherever the window is.
+- The cursor is read (`GetCursorPos`) every 100 ms while the mini window is shown; the polling stops
+  with it (mode switch, frame-rate rebuild, exit). Pixels are physical, so the margins look smaller on
+  a high-DPI monitor.
+
 ### Fullscreen pause
 
 In `scene` mode the scene pauses while a fullscreen window covers the primary monitor and resumes

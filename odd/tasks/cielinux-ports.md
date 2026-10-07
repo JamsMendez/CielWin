@@ -51,8 +51,24 @@ already in CielWin, 3 Linux-only (layer-shell bottom layer, systemd restart, dod
       `dotnet test CielWin.App.Tests -c Release --filter Wallpaper` 153/153; build 0 warnings.
       CI margin: explorer 194s -> 204s, idle 162s -> 172s locally; ~5x on CI is ~17 min, so all four scene
       `HarnessTimeout`s go 15 -> 30 min. Pending: user's live visual check (WARNING/FAILED, wallpaper and mini,
-      4 scenes; raphael gold ring through the letters).
-- [ ] T3 Mini cursor dodge.
+      4 scenes; raphael gold ring through the letters). Commit `c714680`.
+      RDD: slice T1+T2 (573d8c5..c714680, 663 lines) medium, `slice_budget_reached`. The preflight STATUS stopped at
+      `collect intended_untracked_selection`; gentle-ai 4.0.0 rejected the selection JSON built from its own
+      arguments ("must be exact ... v1 JSON") and publishes no schema for it (same as CosmicWin, 2026-09-29).
+      User chose to continue without reporting; no consent envelope was reached, so no decline ran. Slice delivered
+      unreviewed under ordinary policy with writer self-verification (medium tier) as the check of record.
+- [x] T3 Mini cursor dodge. Route: delegated (writer trigger: controller + interop + pure logic + tests).
+      Pure `MiniDodge`/`MiniDodger` (zone = window rect + 24 px; shift side + 32 px along the dominant axis away from
+      the cursor; perpendicular fallbacks; must fit the nearest monitor's `rcWork`; return 400 ms after the cursor
+      leaves both spots, injected clock). `IMiniDodgeDesktop` + `Win32MiniDodgeDesktop` (`GetCursorPos`,
+      `MonitorFromRect`/`GetMonitorInfoW`, `LibraryImport`; null on failure). Controller polls every 100 ms
+      (Background `DispatcherTimer`) from `Show` to `Dispose`; `Show`/`MoveTo`/`GlideTo` cancel the dodge and set home;
+      dodge moves never persist `mini-position`; a failing tick cancels, traces once and raises `PlacementLost`.
+      Of `c549808` only the cancel/dispose rule applies (synchronous cursor read). Margins are physical pixels.
+      RED: build failed (`MiniDodgeDirection` missing, then `dodgeDesktop` parameter missing). GREEN: build 0
+      warnings; App.Tests 747 passed (non-desktop, scene harnesses excluded); Interop.Tests 269 passed / 5 skipped;
+      `Win32MiniDodgeDesktopTests` (RequiresDesktop) 2/2 locally; parent spot check 73/73. Pending: user's live check
+      (dodge at each position, return delay, Alt+M while aside, no focus steal, `trace.log` dodge lines).
 - [ ] T4 CieLinux `docs/cielwin-portability.md` refresh.
 
 ## Acceptance
