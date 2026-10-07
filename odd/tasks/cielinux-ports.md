@@ -77,7 +77,11 @@ already in CielWin, 3 Linux-only (layer-shell bottom layer, systemd restart, dod
       (`/v1/alerts/clear`) holds. That suite cannot run on Windows (it configures the C++ build with CMake; Linux-only
       per CieLinux `c9b3656`).
 - T3 slice RDD: c714680..99a090b (908 lines) medium, `slice_budget_reached`; preflight STATUS stops at the same
-  `intended_untracked_selection` collect as T1+T2.
+  `intended_untracked_selection` collect as T1+T2. User chose to continue without reporting; no consent envelope was
+  reached, so no decline ran. Delivered unreviewed under ordinary policy with writer self-verification as the check
+  of record.
+- Delivery: local `feature-branch-chain`; slices T1+T2 (`1ab6c37`..`c714680`) and T3+T4 (`99a090b`..`849da92`),
+  merged locally into `main` with `--no-ff`. Push is the user's. Live visual checks for T2 and T3 still pending.
 
 ## Acceptance
 
