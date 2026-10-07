@@ -39,8 +39,19 @@ already in CielWin, 3 Linux-only (layer-shell bottom layer, systemd restart, dod
 
 - [x] T1 Tray labels "Scene Mode" / "Scene Wallpaper" / "Scene Mini". Route: inline (mechanical, 3 files, no
       research). `TrayIconHost.ModeMenuLabel` const now pins the submenu header. RED: test build failed
-      (`ModeMenuLabel` missing); GREEN: `TrayIconHostTests` 24/24. README tables updated.
-- [ ] T2 Alert title reaches the reference ring; raphael see-through stamps the gold sprites.
+      (`ModeMenuLabel` missing); GREEN: `TrayIconHostTests` 24/24. README tables updated. Commit `1ab6c37`.
+      RDD: medium, under budget (81 lines; pending in the slice). The first assess was `unassessable` because of
+      unrelated untracked user files (`.claude/`, `docs/`, `AGENTS.md`, ...); reassessed with `--untracked-scope=exclude`.
+- [x] T2 Alert title reaches the reference ring; raphael see-through stamps the gold sprites. Route: delegated
+      (writer trigger: shared overlay + 4 hooks + harnesses). R1 blocks (`// Linux port (R1)` ...
+      `// Linux port end (R1).`) never nest in S1/S4b blocks; `stripS4b` strips R1 first so `PRE_S4B` stays pinned;
+      new `PRE_R1` pins (573d8c5, LF-normalized) in `alert-title-reach.checks.js` (added to the test csproj).
+      Raphael case 4 now asserts gold sprite stamping (the old `drawGlyphRing` assertion is what 5a92a38 replaces).
+      RED: processing 60/66, raphael 34/37, explorer 42/44, idle 28/30 (only the new R1 checks). GREEN:
+      `dotnet test CielWin.App.Tests -c Release --filter Wallpaper` 153/153; build 0 warnings.
+      CI margin: explorer 194s -> 204s, idle 162s -> 172s locally; ~5x on CI is ~17 min, so all four scene
+      `HarnessTimeout`s go 15 -> 30 min. Pending: user's live visual check (WARNING/FAILED, wallpaper and mini,
+      4 scenes; raphael gold ring through the letters).
 - [ ] T3 Mini cursor dodge.
 - [ ] T4 CieLinux `docs/cielwin-portability.md` refresh.
 

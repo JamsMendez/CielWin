@@ -39,7 +39,7 @@ public sealed class ProcessingSceneNodeTests
     /// into a reported test failure instead of a `dotnet test` run that never comes back (see
     /// <see cref="ExplorerSceneNodeTests.HarnessTimeout"/>, the same shape).
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 30s: timed out on the 2-core GitHub Actions runner
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(30); // 30 min like explorer: the 2-core GitHub Actions runner is ~5x slower than a dev machine
 
     [RequiresNodeFact]
     public void ProcessingSceneHarness_PassesAgainstTheRealShippedPage()

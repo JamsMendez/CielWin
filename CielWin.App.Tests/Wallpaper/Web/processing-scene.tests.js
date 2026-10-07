@@ -29,6 +29,7 @@ const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js")
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
 const blurFreeGlowChecks = require(path.join(__dirname, "blur-free-glow.checks.js"));
 const alertOverlayCacheChecks = require(path.join(__dirname, "alert-overlay-cache.checks.js"));
+const alertTitleReachChecks = require(path.join(__dirname, "alert-title-reach.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node processing-scene.tests.js <path-to-wallpaper-processing-directory>");
@@ -988,6 +989,9 @@ blurFreeGlowChecks.register(test, sceneDir, "processing");
 
 // S4b (odd/tasks/scene-optimizations.md): cached alert layers and W4 overlay work, see alert-overlay-cache.checks.js.
 alertOverlayCacheChecks.register(test, sceneDir, "processing");
+
+// R1 (odd/tasks/cielinux-ports.md T2): alert title reach, see alert-title-reach.checks.js.
+alertTitleReachChecks.register(test, sceneDir, "processing");
 
 var failures = [];
 tests.forEach(function (t) {
