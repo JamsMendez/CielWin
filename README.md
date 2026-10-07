@@ -324,6 +324,58 @@ curl -X POST http://127.0.0.1:43811/v1/alerts/clear \
 The server is not running at all when `http-server = off`, when the token file cannot be read or
 created, or when the port is in use (the reason is written to the trace log).
 
+## Integrations (Linux / WSL)
+
+CielWin has no integrations of its own. The coding-agent integrations live in
+[CieLinux](https://github.com/JamsMendez/CieLinux) under `integrations/` and speak the same HTTP API:
+
+| Integration | Source | Config override |
+|-------------|--------|-----------------|
+| pi extension | `CieLinux/integrations/pi` | `~/.config/pi-cielinux/config.json` |
+| Claude Code plugin | `CieLinux/integrations/claude-code` | `~/.config/claude-cielinux/config.json` |
+
+They are Linux programs. On Windows, run them inside WSL and follow the install steps in each
+integration's README. Three things differ from CieLinux:
+
+1. **Networking.** CielWin answers loopback clients only, and in the default WSL2 NAT mode
+   `127.0.0.1` inside WSL is the Linux VM, not Windows. Enable mirrored networking in
+   `%USERPROFILE%\.wslconfig`, then run `wsl --shutdown`:
+
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+
+2. **Token file.** The integrations default to `~/.local/state/cielinux/http.token`. Point them at
+   the CielWin token through the Windows drive instead.
+3. **Held warnings.** CielWin has no `/v1/alerts/clear` route and rejects `duration: 0`, so keep
+   `alerts.warning.hold` set to `false` (the default). A held warning is answered `400` and the
+   integration skips it.
+
+Example override for either integration (replace `<WinUser>`):
+
+```json
+{
+  "server": {
+    "tokenFile": "/mnt/c/Users/<WinUser>/AppData/Local/CielWin/http.token"
+  },
+  "alerts": {
+    "warning": { "hold": false }
+  }
+}
+```
+
+Check the connection from WSL:
+
+```sh
+curl -i -X POST http://127.0.0.1:43811/v1/wallpaper/scene \
+  -H "Authorization: Bearer $(tr -d '\r\n' < /mnt/c/Users/<WinUser>/AppData/Local/CielWin/http.token)" \
+  -H 'Content-Type: application/json' -d '{"scene":"processing"}'
+```
+
+`202` means the integration will work. `Connection refused` usually means WSL is not in mirrored
+mode (the request reached the Linux VM, not Windows); `401` means the token path or value is wrong.
+
 ## Tray icon
 
 The tray and executable icon, `CielWin.App/Assets/raphael-mini.ico` (plus the 256x256
