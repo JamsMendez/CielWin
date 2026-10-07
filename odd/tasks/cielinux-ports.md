@@ -69,7 +69,15 @@ already in CielWin, 3 Linux-only (layer-shell bottom layer, systemd restart, dod
       warnings; App.Tests 747 passed (non-desktop, scene harnesses excluded); Interop.Tests 269 passed / 5 skipped;
       `Win32MiniDodgeDesktopTests` (RequiresDesktop) 2/2 locally; parent spot check 73/73. Pending: user's live check
       (dodge at each position, return delay, Alt+M while aside, no focus steal, `trace.log` dodge lines).
-- [ ] T4 CieLinux `docs/cielwin-portability.md` refresh.
+- [x] T4 CieLinux `docs/cielwin-portability.md` refresh. Route: inline (one passive doc). Bottom-line table gets a
+      CielWin status column (NEB-1 S1 `27dbc31`, PERF-5 S4a `c22fe8c`, held warnings `7ecdc79`); sections 1, 2 and 4
+      say what CielWin has; new section 5 lists each post-assessment CieLinux change with its CielWin commit or why
+      it is Linux-only. CieLinux branch `docs/cielwin-port-status` (`949f244`), merged locally into CieLinux `main`
+      (`42dcdd2`), not pushed. Check: structural readback; the doc assertion in `tests/alerts.contract.test.mjs:810`
+      (`/v1/alerts/clear`) holds. That suite cannot run on Windows (it configures the C++ build with CMake; Linux-only
+      per CieLinux `c9b3656`).
+- T3 slice RDD: c714680..99a090b (908 lines) medium, `slice_budget_reached`; preflight STATUS stops at the same
+  `intended_untracked_selection` collect as T1+T2.
 
 ## Acceptance
 
