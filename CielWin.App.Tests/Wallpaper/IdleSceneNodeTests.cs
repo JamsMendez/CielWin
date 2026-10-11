@@ -41,7 +41,7 @@ public sealed class IdleSceneNodeTests
     /// while the rest of the suite runs in parallel on a 16-thread dev machine), so this keeps the
     /// same hang-guard budget explorer's own harness uses.
     /// </summary>
-    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(15); // was 240s: timed out on the 2-core GitHub Actions runner
+    private static readonly TimeSpan HarnessTimeout = TimeSpan.FromMinutes(30); // 30 min like explorer: the 2-core GitHub Actions runner is ~5x slower than a dev machine
 
     [RequiresNodeFact]
     public void IdleSceneHarness_PassesAgainstTheRealShippedPage()

@@ -32,6 +32,7 @@ function isDiagnosticsProbe(first) {
     (first.indexOf("CIELINUX_DIAGNOSTICS_") === 0 || /^\[\w+-nebula\] unavailable:/.test(first));
 }
 
+const alertTitleReachChecks = require(path.join(__dirname, "alert-title-reach.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node explorer-scene.tests.js <path-to-wallpaper-explorer-directory>");
@@ -233,6 +234,8 @@ function loadPage(options) {
 // - "retired": pinned CielWin's former scene internals, which CielScenes replaced with its own.
 // - "pending": pin CielWin behavior CielScenes does not have yet; re-enable once it is ported there.
 var SHARED_SCENES_SKIPS = {
+  "R1 blocks only add lines: stripping them restores the pre-R1 sources":
+    "retired: the reference was the pre-R1 source, recovered by stripping CielWin's R1 markers",
   "a failed lighting-mask build is retried on the next frame instead of being masked by a committed cache key":
     "pending: CielScenes commits the ring-cache key before buildCombinedLightingMask (CielWin 3ce61fd)",
   "the planet's flare is sized from the active basis, so mini keeps it proportional to the planet":
@@ -960,6 +963,9 @@ test("full frame: the blue-layer glow gradient is created once per geometry, wit
 });
 
 
+
+// R1 (odd/tasks/cielinux-ports.md T2): alert title reach, see alert-title-reach.checks.js.
+alertTitleReachChecks.register(test, sceneDir, "explorer");
 
 var failures = [];
 tests.forEach(function (t) {

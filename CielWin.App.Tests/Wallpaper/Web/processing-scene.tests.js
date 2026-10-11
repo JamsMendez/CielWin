@@ -34,6 +34,7 @@ function isDiagnosticsProbe(first) {
     (first.indexOf("CIELINUX_DIAGNOSTICS_") === 0 || /^\[\w+-nebula\] unavailable:/.test(first));
 }
 
+const alertTitleReachChecks = require(path.join(__dirname, "alert-title-reach.checks.js"));
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node processing-scene.tests.js <path-to-wallpaper-processing-directory>");
@@ -239,8 +240,24 @@ function loadPage(options) {
 }
 
 // ---- Tiny test runner -------------------------------------------------------------------------
+// Checks that cannot apply to the shared CielScenes sources are skipped by name and reported as SKIP:
+// - "retired": pinned CielWin's former scene internals (its R1 marker blocks and constant names), which
+//   CielScenes replaced with CieLinux's own; CieLinux covers the behavior in tests/alert-title-reach.contract.test.mjs.
+var R1_RETIRED = "retired: extracted CielWin's R1 marker blocks; CieLinux tests/alert-title-reach.contract.test.mjs covers it";
+var SHARED_SCENES_SKIPS = {
+  "R1 reach applies to a single tile with a scene hook only": R1_RETIRED,
+  "R1 title layout: the font size never depends on the limits; the reveal stops at the limit or the whole glyph": R1_RETIRED,
+  "R1 letter bands reach the limit but never cross the tile middle": R1_RETIRED,
+  "R1 alert: a single tile bakes its letters to the scene's limits; a mosaic keeps the reference reveal": R1_RETIRED,
+  "R1 blocks only add lines: stripping them restores the pre-R1 sources": R1_RETIRED,
+  "R1 processing hook: the title limits stop a small margin short of the scene's reference ring (wallpaper and mini)": R1_RETIRED,
+};
 var tests = [];
-function test(name, fn) { tests.push({ name: name, fn: fn }); }
+var skipped = [];
+function test(name, fn) {
+  if (Object.prototype.hasOwnProperty.call(SHARED_SCENES_SKIPS, name)) { skipped.push(name); return; }
+  tests.push({ name: name, fn: fn });
+}
 
 // vm.createContext gives the sandbox its OWN realm -- see alert-layer-layout.tests.js's own remarks
 // on why a JSON round-trip is needed before assert.deepStrictEqual against an outer-realm literal.
@@ -994,6 +1011,9 @@ test("the nebula fragment shader requests highp float (NEB-1)", function () {
 
 
 
+// R1 (odd/tasks/cielinux-ports.md T2): alert title reach, see alert-title-reach.checks.js.
+alertTitleReachChecks.register(test, sceneDir, "processing");
+
 var failures = [];
 tests.forEach(function (t) {
   try {
@@ -1006,5 +1026,6 @@ tests.forEach(function (t) {
   }
 });
 
+skipped.forEach(function (name) { console.log("SKIP " + name + " -- " + SHARED_SCENES_SKIPS[name]); });
 console.log((tests.length - failures.length) + "/" + tests.length + " passed");
 process.exit(failures.length > 0 ? 1 : 0);

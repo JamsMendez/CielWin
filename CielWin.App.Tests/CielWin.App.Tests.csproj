@@ -41,6 +41,12 @@
     <Content Include="Wallpaper\Web\pause-resume.checks.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Wallpaper\Web\alert-overlay-cache.checks.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Wallpaper\Web\alert-title-reach.checks.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CielWin.App\CielWin.App.csproj" />
