@@ -246,10 +246,6 @@ var SHARED_SCENES_SKIPS = {
     "retired: CielScenes stamps its own constellationRingStamp instead of the ring cache",
   "a renamed constellation ring fails the page load instead of silently dropping the see-through ring":
     "retired: CielScenes resolves the see-through ring through constellationRingStamp",
-  "a failed lighting-mask build is retried on the next frame instead of being masked by a committed cache key":
-    "pending: CielScenes commits the ring-cache key before buildCombinedLightingMask (CielWin 3ce61fd)",
-  "the planet's flare is sized from the active basis, so mini keeps it proportional to the planet":
-    "pending: CielScenes sizes the flare from sceneBasis, not activeSceneBasis (CielWin 3ce61fd)",
   "earth: the grayscale fast path writes the reference bytes with no per-pixel Math calls":
     "retired: the reference was the pre-S1 source, recovered by stripping CielWin's S1 markers",
   "earth: the fallback path (no grayscale bake, or big-endian) writes the reference bytes":

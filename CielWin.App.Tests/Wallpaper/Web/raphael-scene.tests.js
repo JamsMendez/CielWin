@@ -259,8 +259,6 @@ var SHARED_SCENES_SKIPS = {
     "retired: CielScenes stamps cached gold glyph sprites instead of calling drawGlyphRing",
   "no glow under the gold glyphs in either variant: none baked, none stamped (the blue ring is unchanged)":
     "retired: counts drawGlyphRing calls, which CielScenes no longer makes for the gold ring",
-  "the mini hexadecagon's rendered stroke equals the shared mini polygon width (which the processing octagon also uses)":
-    "pending: CielScenes raised MINI_SCENE_ZOOM to 1.3507 without rescaling the stroke (0.84px, not 0.75px)",
 };
 var tests = [];
 var skipped = [];
