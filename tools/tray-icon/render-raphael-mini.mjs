@@ -14,11 +14,14 @@
 // averages into a pale, half-transparent gold disc that washes out on a light taskbar, so their alpha is
 // raised, the gold deepened and a thin dark outline drawn around the silhouette. 32 and up are untouched.
 //
-// How the background is removed WITHOUT touching the scene sources: the page already has a transparent
-// background in the mini variant (styles.css, html.scene-mini). Two layers still sit behind the figure
-// and are dropped by a script injected before the page loads:
-//   - #nebula, the WebGL gold haze canvas: hidden with an injected stylesheet;
-//   - drawMiniSceneBase (shared/js/render-loop.js), the 0.9-alpha dark disc the mini window paints under
+// The scene sources are the shared CielScenes submodule and are not touched. The page ships a qrc:-only
+// CSP (CieLinux's Qt host), so the capture bypasses CSP through the DevTools Protocol, the file:// stand-in
+// for SceneWebServer's CSP rewrite. Three layers sit behind the figure and are dropped by a script
+// injected before the page loads:
+//   - the opaque black mini root (styles.css, html.scene-mini, CieLinux's luma key): made transparent
+//     with an injected stylesheet, the same rule SceneWebServer.HostStyle injects in the app;
+//   - #nebula, the WebGL gold haze canvas: hidden by the same stylesheet;
+//   - drawMiniSceneBase (raphael/js/render-loop.js), the 0.9-alpha dark disc the mini window paints under
 //     its rings so desktop text does not read through: replaced with a no-op before the first frame.
 // requestAnimationFrame is replaced by a manual queue so the captured frame is a fixed point on the
 // scene clock (ICON_FRAME_MS) instead of whenever the screenshot happens to land. Edge runs headless
@@ -52,7 +55,7 @@ const injected = `(() => {
   window.__iconFrame = (ms) => { const due = queue.splice(0); due.forEach((cb) => cb(ms)); return due.length; };
   document.addEventListener("DOMContentLoaded", () => {
     const style = document.createElement("style");
-    style.textContent = "#nebula { display: none !important; }";
+    style.textContent = "html.scene-mini { background: transparent !important; } #nebula { display: none !important; }";
     document.head.appendChild(style);
   });
 })();`;
@@ -104,6 +107,7 @@ async function capture(edge) {
     await page("Emulation.setDeviceMetricsOverride", { width: viewport, height: viewport, deviceScaleFactor: 1, mobile: false });
     await page("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
     await page("Page.addScriptToEvaluateOnNewDocument", { source: injected });
+    await page("Page.setBypassCSP", { enabled: true });
 
     const loaded = cdp.once("Page.loadEventFired", sessionId);
     const url = pathToFileURL(scenePage).href + "?fps=60&variant=mini";
