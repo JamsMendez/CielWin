@@ -17,10 +17,10 @@ const assert = require("assert");
 const { URLSearchParams } = require("url");
 
 // (a) variant parse -----------------------------------------------------------------------------
-// Runs ONLY shared/js/render-loop.js in a tiny sandbox (parseParams is what alert-overlay.js would
+// Runs ONLY the scene's own js/render-loop.js in a tiny sandbox (parseParams is what alert-overlay.js would
 // provide), so the parse cases do not each pay a full scene load (idle/explorer bake an Earth texture).
-function readVariant(sharedDir, location) {
-  var source = fs.readFileSync(path.join(sharedDir, "js", "render-loop.js"), "utf8");
+function readVariant(sceneDir, location) {
+  var source = fs.readFileSync(path.join(sceneDir, "js", "render-loop.js"), "utf8");
   var sandbox = {
     window: { requestAnimationFrame: function () {} },
     document: {}, // no documentElement: the class toggle must be guarded
@@ -36,7 +36,7 @@ function readVariant(sharedDir, location) {
   return { variant: sandbox.sceneVariant, isMini: sandbox.isMiniVariant, read: sandbox.readSceneVariantFromUrl };
 }
 
-function checkVariantParse(sharedDir) {
+function checkVariantParse(sceneDir) {
   var cases = [
     [{ search: "", hash: "" }, "full", "no params"],
     [{ search: "?variant=mini", hash: "" }, "mini", "?variant=mini"],
@@ -49,7 +49,7 @@ function checkVariantParse(sharedDir) {
     [{ search: "?variant=", hash: "" }, "full", "empty value"],
   ];
   cases.forEach(function (c) {
-    var result = readVariant(sharedDir, c[0]);
+    var result = readVariant(sceneDir, c[0]);
     assert.strictEqual(typeof result.read, "function", "expected readSceneVariantFromUrl() to exist");
     assert.strictEqual(result.variant, c[1], c[2] + ": expected variant " + c[1] + ", got " + result.variant);
     assert.strictEqual(result.isMini, c[1] === "mini", c[2] + ": isMiniVariant mismatch");
@@ -232,7 +232,7 @@ function checkEdgeFadeMask(page) {
 
 // mini-scene-window T2j: processing and raphael draw ONE occluding dark base disc beneath the whole mini scene,
 // so text and icons of windows behind the topmost mini window cannot read through the structure. Shared
-// function in shared/js/render-loop.js: destination-over (beneath everything already drawn), a radial
+// function in each scene's js/render-loop.js: destination-over (beneath everything already drawn), a radial
 // gradient solid (alpha in [0.85, 0.95]) out to solidRadius that falls to 0 at falloffRadius, no hard edge.
 function checkMiniSceneBaseFunction(page) {
   var gradients = [];
@@ -329,17 +329,27 @@ function checkFullLayers(options) {
   }
 }
 
-// Stylesheet: the mini class makes the page transparent (and hides #nebula where the scene has one).
+// Stylesheet: under the mini class every page layer is transparent (and #nebula hidden or transparent where
+// the scene has one). The shared stylesheets paint the html ROOT opaque black for CieLinux's luminance key;
+// CielWin's host stylesheet (SceneWebServer.HostStyle, tested in SceneWebServerTests) makes it transparent
+// again, so the root is not asserted here.
 // nebulaMode: "hidden" (display: none), "transparent" (background: transparent) or absent (no nebula).
 function checkMiniStylesheet(sceneDir, nebulaMode) {
-  var css = fs.readFileSync(path.join(sceneDir, "styles.css"), "utf8");
-  var block = /html\.scene-mini,\s*html\.scene-mini body,\s*html\.scene-mini #scene\s*\{([^}]*)\}/.exec(css);
-  assert.ok(block, "expected an html.scene-mini rule covering html, body and #scene");
-  assert.ok(/background:\s*transparent/.test(block[1]), "expected the mini rule to set background: transparent");
+  var css = fs.readFileSync(path.join(sceneDir, "styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  var transparent = [];
+  var rule = /([^{}]+)\{([^}]*)\}/g;
+  var match;
+  while ((match = rule.exec(css)) !== null) {
+    if (!/background:\s*transparent/.test(match[2])) continue;
+    match[1].split(",").forEach(function (selector) { transparent.push(selector.trim().replace(/\s+/g, " ")); });
+  }
+  ["html.scene-mini body", "html.scene-mini #scene"].forEach(function (selector) {
+    assert.ok(transparent.indexOf(selector) >= 0, "expected '" + selector + "' to be background: transparent");
+  });
   if (nebulaMode === "hidden") {
     assert.ok(/html\.scene-mini #nebula\s*\{[^}]*display:\s*none/.test(css), "expected html.scene-mini #nebula to be display: none");
   } else if (nebulaMode === "transparent") {
-    assert.ok(/html\.scene-mini #nebula\s*\{[^}]*background:\s*transparent/.test(css), "expected html.scene-mini #nebula to be background: transparent");
+    assert.ok(transparent.indexOf("html.scene-mini #nebula") >= 0, "expected html.scene-mini #nebula to be background: transparent");
     assert.ok(!/html\.scene-mini #nebula\s*\{[^}]*display:\s*none/.test(css), "expected the mini #nebula to stay displayed");
   }
 }

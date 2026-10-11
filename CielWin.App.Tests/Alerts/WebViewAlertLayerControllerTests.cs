@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using CielWin.Interop.Win32;
 using CielWin.App;
 using CielWin.App.Alerts;
+using CielWin.App.Wallpaper;
 
 namespace CielWin.App.Tests.Alerts;
 
@@ -251,16 +252,16 @@ public sealed class WebViewAlertLayerControllerTests
     }
 
     /// <summary>
-    /// The virtual host must use an RFC 6761 reserved TLD, never <c>.local</c>. The WebView2
-    /// reference for <c>SetVirtualHostNameToFolderMapping</c>: "using .local as the top-level domain
-    /// name will work but can cause a delay during navigations. You should avoid using .local if
-    /// you can." Every controller creation (startup and every recovery) pays that navigation.
+    /// The scene host must use an RFC 6761 reserved TLD, never <c>.local</c> ("using .local as the
+    /// top-level domain name will work but can cause a delay during navigations"). Every controller
+    /// creation (startup and every recovery) pays that navigation.
     /// </summary>
     [Fact]
-    public void VirtualHostUsesAReservedExampleDomainNotDotLocal()
+    public void SceneHostUsesAReservedExampleDomainNotDotLocal()
     {
         var source = ReadControllerSource();
-        Assert.Contains("SetVirtualHostNameToFolderMapping(\"cielwin-scene.example\"", source);
+        Assert.Equal("cielwin-scene.example", SceneWebServer.HostName);
+        Assert.Contains("SceneWebServer.Attach(candidate.CoreWebView2, SceneWebServer.WebRoot);", source);
         Assert.DoesNotContain(".local\"", source);
         Assert.DoesNotContain(".local/", source);
     }
@@ -286,8 +287,9 @@ public sealed class WebViewAlertLayerControllerTests
     }
 
     /// <summary>
-    /// The controller maps the whole <c>Wallpaper\Web</c> folder (every scene page loads
-    /// <c>Wallpaper\Web\shared\...</c> siblings) under its own reserved example domain and navigates
+    /// The controller serves the whole <c>Wallpaper\Web</c> folder (every scene page loads
+    /// <c>Wallpaper\Web\shared\...</c> siblings) under its own reserved example domain through
+    /// <see cref="SceneWebServer"/> (a virtual host mapping could not adapt the shared pages) and navigates
     /// to the active scene page, whose URL comes from <see cref="WebViewAlertLayerController.SceneUrl"/>
     /// built from the MUTABLE <c>_currentScene</c> field.
     /// </summary>
@@ -296,10 +298,10 @@ public sealed class WebViewAlertLayerControllerTests
     {
         var source = ReadControllerSource();
 
-        Assert.Contains("SetVirtualHostNameToFolderMapping(\"cielwin-scene.example\"", source);
+        Assert.Contains("SceneWebServer.Attach(candidate.CoreWebView2, SceneWebServer.WebRoot);", source);
+        Assert.DoesNotContain("SetVirtualHostNameToFolderMapping", source);
         Assert.Contains("Navigate(SceneUrl(_currentScene, fps: _fps));", source);
-        Assert.Contains("\"Wallpaper\", \"Web\")", source);
-        Assert.DoesNotContain("\"Wallpaper\", \"Web\", \"processing\"", source);
+        Assert.Equal(Path.Combine(AppContext.BaseDirectory, "Wallpaper", "Web"), SceneWebServer.WebRoot);
         Assert.DoesNotContain(".local\"", source);
         Assert.DoesNotContain(".local/", source);
     }

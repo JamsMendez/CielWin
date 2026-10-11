@@ -16,6 +16,11 @@ jobs:
       TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The scene pages (CielWin.App/Wallpaper/Web) are the CielScenes submodule. github.token
+          # can read it only while CielScenes is public; if it becomes private, pass a token with
+          # read access to it here (`token:`), since the default token covers this repository only.
+          submodules: true
 
       - uses: actions/setup-dotnet@v5
         with:

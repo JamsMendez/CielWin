@@ -34,7 +34,7 @@ public sealed class RaphaelSceneNodeTests
 
     /// <summary>
     /// Generous, but bounded -- same shape as <see cref="ProcessingSceneNodeTests.HarnessTimeout"/>:
-    /// the S4a baked-glow checks tick long runs of full wallpaper frames (~12 s locally, several times
+    /// the scene cases tick long runs of full wallpaper frames (seconds locally, several times
     /// that on the 2-core GitHub Actions runner); this only exists to turn "the process manager wedged"
     /// into a reported test failure instead of a `dotnet test` run that never comes back.
     /// </summary>

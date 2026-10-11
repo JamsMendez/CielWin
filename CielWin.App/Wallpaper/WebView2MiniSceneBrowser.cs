@@ -63,8 +63,8 @@ public sealed class WebView2MiniSceneBrowser : IMiniSceneBrowser
             candidate.ShouldDetectMonitorScaleChanges = false;
             candidate.RasterizationScale = 1.0;
             candidate.Bounds = viewport;
-            candidate.CoreWebView2.SetVirtualHostNameToFolderMapping("cielwin-scene.example",
-                Path.Combine(AppContext.BaseDirectory, "Wallpaper", "Web"), CoreWebView2HostResourceAccessKind.DenyCors);
+            // Same scene host as the wallpaper layer: serves Wallpaper\Web and adapts the shared pages.
+            SceneWebServer.Attach(candidate.CoreWebView2, SceneWebServer.WebRoot);
             candidate.CoreWebView2.WebMessageReceived += OnMessage;
             candidate.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             candidate.CoreWebView2.ProcessFailed += OnProcessFailed;

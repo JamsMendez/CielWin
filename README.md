@@ -34,6 +34,22 @@ it still needs the WebView2 Runtime, which Windows 11 ships with. To build from 
 
 ## Build, run, test
 
+The scene pages (`CielWin.App/Wallpaper/Web`) are the shared
+[CielScenes](https://github.com/JamsMendez/CielScenes) repository, included as a git submodule, so
+clone with submodules:
+
+```powershell
+git clone --recurse-submodules https://github.com/JamsMendez/CielWin.git
+# or, in an existing clone:
+git submodule update --init
+```
+
+The shared pages are written for CieLinux first. CielWin keeps its platform differences in the host
+(`CielWin.App/Wallpaper/SceneWebServer.cs`), never in the shared files: it serves the pages under
+`https://cielwin-scene.example/`, rewrites their `qrc:` Content-Security-Policy to `'self'`, and makes
+the mini variant's luminance-key background transparent again. To take a newer CielScenes:
+`git submodule update --remote CielWin.App/Wallpaper/Web`, then commit the new submodule pointer.
+
 | Task | Command |
 |------|---------|
 | Build | `dotnet build CielWin.sln` |
@@ -50,6 +66,8 @@ SmartScreen warns the first time it runs (**More info** → **Run anyway**).
 Test notes:
 
 - The scene tests run JavaScript harnesses with `node`. Without `node` on `PATH` they are skipped.
+- A few scene checks print `SKIP` with a reason: "retired" ones pinned CielWin's former scene
+  internals, "pending" ones wait for a CielWin fix to be ported to CielScenes.
 - Tests that touch the real desktop are skipped by default. To run them, set
   `CIELWIN_RUN_DESKTOP_TESTS=1` in an interactive desktop session and exit CielWin first (the
   wallpaper tests skip while CielWin is running).
