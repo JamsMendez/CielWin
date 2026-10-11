@@ -112,7 +112,15 @@ function checkTunablesMatchTwin(sceneDir, twinScene) {
 // CONSTELLATION_LINE_WIDTH) and the hieroglyph band's glyph stroke (HIEROGLYPH_STROKE_PX) are absolute px
 // sizes, so in the ~6x smaller mini ring they read as blobs / dense hatching. Mini scales each by
 // (that ring's thickness) / (its thickness in the full scene at the 3440x1440 reference screen), with a
-// MINI_CONSTELLATION_MIN_PX floor; the full variant keeps the exact tunables.
+// MINI_CONSTELLATION_MIN_PX floor. scene-wallpaper-scaling T5: the full variant scales them too below a
+// 1080p screen, by min(1, thickness / its thickness at 1920x1080), with the same floor; at and above the
+// 1080p ring thickness it keeps the exact tunables.
+
+// The full-variant ring thickness at the 1920x1080 reference screen.
+function wallpaperReferenceBox(full, thicknessFraction) {
+  var reference = cfg(full, "WALLPAPER_CONSTELLATION_REFERENCE_SCREEN");
+  return thicknessFraction * full.sandbox.sceneBasis(reference.width, reference.height);
+}
 
 function cfg(page, name) { return vm.runInContext(name, page.sandbox); }
 
@@ -200,11 +208,18 @@ function checkConstellationDetailScale(loadPage) {
   assert.ok(drawn.length > 0, "expected constellation dots to be drawn");
   drawn.forEach(function (r) { assert.ok(Math.abs(r - sizes.dotRadius) < 1e-9, "drawn dot radius " + r + ", expected " + sizes.dotRadius); });
 
-  // full: unchanged, whatever the ring size
-  [40, miniBox, referenceBox].forEach(function (box) {
+  // full: unchanged at and above the 1080p ring, proportional (with the floor) below it
+  var wallBox = wallpaperReferenceBox(full, thickness);
+  [wallBox, referenceBox].forEach(function (box) {
     var f = full.sandbox.constellationDetailSizes(box);
     assert.strictEqual(f.dotRadius, dot, "the full dot radius must stay " + dot);
     assert.strictEqual(f.lineWidth, line, "the full line width must stay " + line);
+  });
+  [40, wallBox * 0.5].forEach(function (box) {
+    var f = full.sandbox.constellationDetailSizes(box);
+    var r = box / wallBox;
+    assert.ok(Math.abs(f.dotRadius - Math.max(floor, dot * r)) < 1e-9, "full dot radius " + f.dotRadius + " at box " + box);
+    assert.ok(Math.abs(f.lineWidth - Math.max(floor, line * r)) < 1e-9, "full line width " + f.lineWidth + " at box " + box);
   });
   var fullDrawn = drawnDotRadiiPx(full, referenceBox);
   assert.ok(fullDrawn.length > 0);
@@ -237,11 +252,18 @@ function checkHieroglyphStrokeScale(loadPage) {
     assert.ok(Math.abs(w - stroke * 0.9) < 1e-9, "proportional hieroglyph stroke " + w + ", expected " + stroke * 0.9);
   });
 
-  // full: unchanged at any band size
-  [miniBand, referenceBand].forEach(function (band) {
+  // full: unchanged at and above the 1080p band, proportional (with the floor) below it
+  var wallBand = wallpaperReferenceBox(full, bandFraction);
+  [wallBand, referenceBand].forEach(function (band) {
     var widths = drawnHieroglyphStrokesPx(full, band);
     assert.ok(widths.length > 0);
     widths.forEach(function (w) { assert.strictEqual(w, stroke, "the full hieroglyph stroke must stay " + stroke + ", got " + w); });
+  });
+  [miniBand, wallBand * 0.5].forEach(function (band) {
+    var expected = Math.max(floor, stroke * band / wallBand);
+    var widths = drawnHieroglyphStrokesPx(full, band);
+    assert.ok(widths.length > 0);
+    widths.forEach(function (w) { assert.ok(Math.abs(w - expected) < 1e-9, "full hieroglyph stroke " + w + ", expected " + expected); });
   });
 }
 
