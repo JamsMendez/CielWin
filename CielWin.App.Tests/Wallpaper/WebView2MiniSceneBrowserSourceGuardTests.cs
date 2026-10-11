@@ -55,7 +55,8 @@ public sealed class WebView2MiniSceneBrowserSourceGuardTests
         var source = ReadSource();
 
         Assert.Contains("\"CielWin\", \"WebView2Mini\"", source);
-        Assert.Contains("SetVirtualHostNameToFolderMapping(\"cielwin-scene.example\"", source);
+        Assert.Contains("SceneWebServer.Attach(candidate.CoreWebView2, SceneWebServer.WebRoot);", source);
+        Assert.DoesNotContain("SetVirtualHostNameToFolderMapping", source);
         Assert.DoesNotContain("CosmicWin", source);
         Assert.DoesNotContain("cosmicwin", source);
     }

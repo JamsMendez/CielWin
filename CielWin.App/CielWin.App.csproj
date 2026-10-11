@@ -19,9 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Served through WebView2's SetVirtualHostNameToFolderMapping, which maps a virtual host to a
-         real folder, so the scene pages ship as loose content files next to the executable. -->
-    <Content Include="Wallpaper\Web\**">
+    <!-- The shared scenes (CielScenes git submodule), served by Wallpaper/SceneWebServer.cs from loose
+         content files next to the executable. The submodule's .git link file and README stay out. -->
+    <Content Include="Wallpaper\Web\**" Exclude="Wallpaper\Web\.git;Wallpaper\Web\.git\**;Wallpaper\Web\README.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

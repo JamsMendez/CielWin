@@ -1,0 +1,3 @@
+[submodule "CielWin.App/Wallpaper/Web"]
+	path = CielWin.App/Wallpaper/Web
+	url = ../CielScenes.git

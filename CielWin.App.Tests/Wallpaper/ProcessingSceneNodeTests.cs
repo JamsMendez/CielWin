@@ -33,8 +33,8 @@ public sealed class ProcessingSceneNodeTests
         Path.Combine(AppContext.BaseDirectory, "Wallpaper", "Web", "processing-scene.tests.js");
 
     /// <summary>
-    /// Generous, but bounded -- the harness runs vm-sandboxed cases, including the S4a/S4b baked-glow
-    /// and alert-cache checks that tick long runs of full wallpaper frames (~8 s locally, several times
+    /// Generous, but bounded -- the harness runs vm-sandboxed cases, some of which
+    /// tick long runs of full wallpaper frames (seconds locally, several times
     /// that on the 2-core GitHub Actions runner); this only exists to turn "the process manager wedged"
     /// into a reported test failure instead of a `dotnet test` run that never comes back (see
     /// <see cref="ExplorerSceneNodeTests.HarnessTimeout"/>, the same shape).

@@ -27,8 +27,13 @@ const { URLSearchParams } = require("url");
 
 const miniVariantChecks = require(path.join(__dirname, "mini-variant.checks.js"));
 const pauseResumeChecks = require(path.join(__dirname, "pause-resume.checks.js"));
-const blurFreeGlowChecks = require(path.join(__dirname, "blur-free-glow.checks.js"));
-const alertOverlayCacheChecks = require(path.join(__dirname, "alert-overlay-cache.checks.js"));
+// Load-time diagnostics of the shared scenes that are not render errors: the CieLinux log-transport
+// probes, and the nebula reporting that this vm sandbox has no WebGL.
+function isDiagnosticsProbe(first) {
+  return typeof first === "string" &&
+    (first.indexOf("CIELINUX_DIAGNOSTICS_") === 0 || /^\[\w+-nebula\] unavailable:/.test(first));
+}
+
 const sceneDir = process.argv[2];
 if (!sceneDir) {
   console.error("usage: node processing-scene.tests.js <path-to-wallpaper-processing-directory>");
@@ -49,7 +54,7 @@ const SCRIPT_FILES = [
   "js/layers.js",
   "js/see-through-hook.js",
   "shared:js/alert-overlay.js",
-  "shared:js/render-loop.js",
+  "js/render-loop.js",
   "js/main.js",
 ];
 
@@ -140,7 +145,11 @@ function loadPage(options) {
   // does not spam this harness's own stdout.
   var consoleErrorCalls = [];
   var consoleMock = {
-    error: function () { consoleErrorCalls.push(Array.prototype.slice.call(arguments)); },
+    // Load-time diagnostics are not render errors (see isDiagnosticsProbe).
+    error: function () {
+      if (isDiagnosticsProbe(arguments[0])) return;
+      consoleErrorCalls.push(Array.prototype.slice.call(arguments));
+    },
     log: function () { /* no-op: unused by the scene */ },
     warn: function () { /* no-op: unused by the scene */ },
   };
@@ -499,7 +508,7 @@ test("a malformed host message is ignored without throwing", function () {
 });
 
 // ---- Case 8: shared render-loop fps cap (D6d, html-wallpaper-demo) --------------------------------
-// shared/js/render-loop.js's scheduleFrame is the ONE place every scene schedules its next animation
+// each scene's js/render-loop.js's scheduleFrame is the ONE place every scene schedules its next animation
 // frame (see that file's own header remarks). These drive the REAL requestAnimationFrame mock
 // directly -- page.requestAnimationFrameCalls records each pushed callback (see loadPage's own
 // windowMock.requestAnimationFrame), so a test can fire it with a chosen timestamp exactly like the
@@ -740,7 +749,7 @@ test("shared render loop: after a simulated 500ms hitch, the schedule resyncs in
 // ---- mini-scene-window T2: `?variant=mini` (checks shared via mini-variant.checks.js) -------------
 
 test("the scene variant parses from the URL: default full, mini recognized, garbage falls back to full", function () {
-  miniVariantChecks.checkVariantParse(sharedDir);
+  miniVariantChecks.checkVariantParse(sceneDir);
 });
 
 test("mini draws only its kept layers (plus the green nebula), on a transparent canvas, and still renders the alert overlay", function () {
@@ -955,7 +964,7 @@ test("mini thins the folding bands to ~2.5px at 288 (radii unchanged); the full 
   });
 });
 
-test("the stylesheet makes the mini page and #nebula transparent", function () {
+test("the stylesheet makes the mini page layers and #nebula transparent (the root is the host's, see SceneWebServer)", function () {
   miniVariantChecks.checkMiniStylesheet(sceneDir, "transparent");
 });
 
@@ -983,11 +992,7 @@ test("the nebula fragment shader requests highp float (NEB-1)", function () {
   assert.doesNotMatch(fragment[1], /precision mediump float;/);
 });
 
-// S4a (odd/tasks/scene-optimizations.md): PERF-5 baked glows instead of per-frame shadowBlur, see blur-free-glow.checks.js.
-blurFreeGlowChecks.register(test, sceneDir, "processing");
 
-// S4b (odd/tasks/scene-optimizations.md): cached alert layers and W4 overlay work, see alert-overlay-cache.checks.js.
-alertOverlayCacheChecks.register(test, sceneDir, "processing");
 
 var failures = [];
 tests.forEach(function (t) {

@@ -302,11 +302,10 @@ public sealed class WebViewAlertLayerController : IDisposable
             if (!StillCurrent(epoch, hwnd, generation)) return;
             candidate.RootVisualTarget = visual;
             _host.CommitComposition();
-            // The mapping covers the WHOLE Wallpaper\Web folder, since every scene page loads
-            // Wallpaper\Web\shared\... siblings (the shared alert overlay and fonts).
-            candidate.CoreWebView2.SetVirtualHostNameToFolderMapping("cielwin-scene.example",
-                Path.Combine(AppContext.BaseDirectory, "Wallpaper", "Web"),
-                CoreWebView2HostResourceAccessKind.DenyCors);
+            // The scene host serves the WHOLE Wallpaper\Web folder (the CielScenes submodule), since every
+            // scene page loads Wallpaper\Web\shared\... siblings, and adapts each page to WebView2 on the
+            // way out (CSP, mini transparency) -- see SceneWebServer.
+            SceneWebServer.Attach(candidate.CoreWebView2, SceneWebServer.WebRoot);
             candidate.CoreWebView2.WebMessageReceived += OnMessage;
             candidate.CoreWebView2.NavigationStarting += OnNavigationStarting;
             candidate.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
@@ -531,12 +530,12 @@ public sealed class WebViewAlertLayerController : IDisposable
     /// <summary>
     /// The exact URL <see cref="CreateAsync"/> and <see cref="SwitchScene"/> both navigate to for
     /// <paramref name="scene"/>. <paramref name="fps"/> is the global frame-rate cap (the scene pages
-    /// parse the <c>fps</c> query param, see <c>shared/js/render-loop.js</c>): only 30 or 60 ever reach
+    /// parse the <c>fps</c> query param, see each scene's <c>js/render-loop.js</c>): only 30 or 60 ever reach
     /// the URL, anything else falls back to the default 60. <paramref name="variant"/> selects a page
     /// variant such as <c>mini</c>. Internal so tests can exercise it directly.
     /// </summary>
     internal static string SceneUrl(WallpaperScene scene, string? variant = null, int fps = 60) =>
-        $"https://cielwin-scene.example/{SceneFolderName(scene)}/index.html?fps={(Settings.IsFrameRate(fps) ? fps : Settings.Default.FrameRate)}"
+        $"https://{SceneWebServer.HostName}/{SceneFolderName(scene)}/index.html?fps={(Settings.IsFrameRate(fps) ? fps : Settings.Default.FrameRate)}"
         + (variant is null ? "" : $"&variant={variant}");
 
     public void Dispose()
