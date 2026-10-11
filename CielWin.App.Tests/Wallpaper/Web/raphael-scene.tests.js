@@ -547,8 +547,12 @@ test("the blue glyph ring adds its extra glyphs up to the most that fit without 
   var goldWidth = (gold.outerRadius - gold.innerRadius) * 0.5;
   var blueWidth = (blue.outerRadius - blue.innerRadius) * 0.25;
 
-  var goldBase = sandbox.glyphRingCountForRing(gold, goldWidth, 20);
-  var blueBase = sandbox.glyphRingCountForRing(blue, blueWidth, 20);
+  // Wallpaper scaling (CielScenes odd/tasks/scene-wallpaper-scaling.md T2): below a 1080 px short side the 20 px gap
+  // scales down with the composition (glyphRingGapPx), here 800 px.
+  var gap = sandbox.glyphRingGapPx();
+  assert.ok(Math.abs(gap - 20 * sandbox.coreRadius(800) / sandbox.coreRadius(1080)) < 1e-9, "the 800 px wallpaper gap scales, got " + gap);
+  var goldBase = sandbox.glyphRingCountForRing(gold, goldWidth, gap);
+  var blueBase = sandbox.glyphRingCountForRing(blue, blueWidth, gap);
   var blueCeiling = blueBase;
   while (sandbox.glyphRingLinearGapAtRadius(blue.innerRadius, blueCeiling + 1, blueWidth) >= 0) blueCeiling++;
   var expectedBlue = Math.min(blueBase + 50, blueCeiling);
@@ -619,7 +623,9 @@ test("mini occludes the background under the whole raphael ring system: a destin
   var sb = captured.page.sandbox;
   var zoom = vm.runInContext("MINI_SCENE_ZOOM", sb);
   var rim = sb.glyphRingAnnuli(sb.coreRadius(288))[3].outerRadius * zoom; // the outer glyph ring's outer edge, as drawn
-  assert.ok(Math.abs(captured.call.cx - 288 * 0.505) < 1e-6 && Math.abs(captured.call.cy - 288 * 0.515) < 1e-6, "the base must be centered on the ring system");
+  // T3 (CielScenes scene-wallpaper-scaling): the mini ring system is centred in the window like idle/explorer's.
+  assert.ok(Math.abs(captured.call.cx - 144) < 1e-6 && Math.abs(captured.call.cy - 144) < 1e-6, "the base must be centered on the ring system");
+  assert.ok(Math.abs(rim - 288 * 0.40) < 1e-9, "the outer rim is 0.40 of the short side like idle/explorer, got " + rim);
   assert.ok(captured.call.solid >= rim - 1e-6 && captured.call.solid <= rim * 1.02, "solid radius " + captured.call.solid + " must reach the outer rim " + rim);
   assert.ok(captured.call.falloff > captured.call.solid && captured.call.falloff <= rim * 1.10, "expected a short soft edge just outside the rim, got " + captured.call.falloff);
 });
@@ -678,12 +684,15 @@ function ringSpriteStats(page) {
   return { gold: stats(sprites.outlineGlyphsGold), blue: stats(sprites.outlineGlyphs), glow: (sprites.outlineGlyphsGoldGlow || []).length, hasGlowKey: "outlineGlyphsGoldGlow" in sprites };
 }
 
-test("mini glyphs are tall strokes: blue and gold height:width >= 3", function () {
+// T3 (CielScenes scene-wallpaper-scaling): the 288 px mini ring is 0.40 of the side now (it was 0.441, past the
+// 0.41 edge fade), so the gold ring is ~9% thinner there and its 2 px body-width floor holds the sprite width:
+// the gold strokes are 2.67x taller than wide at 288 (and taller as the window grows); blue keeps >= 3.
+test("mini glyphs are tall strokes: blue height:width >= 3, gold >= 2.6", function () {
   var page = loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" });
   var stats = ringSpriteStats(page);
-  ["blue", "gold"].forEach(function (ring) {
-    var worst = Math.min.apply(null, stats[ring].ratios);
-    assert.ok(worst >= 3, ring + " mini glyphs must be at least 3x taller than wide, worst ratio " + worst.toFixed(2));
+  [["blue", 3], ["gold", 2.6]].forEach(function (entry) {
+    var worst = Math.min.apply(null, stats[entry[0]].ratios);
+    assert.ok(worst >= entry[1], entry[0] + " mini glyphs must be at least " + entry[1] + "x taller than wide, worst ratio " + worst.toFixed(2));
   });
 });
 
@@ -692,7 +701,8 @@ test("mini gold ring has 3x the glyphs the standard sizing rule gives at that sc
   var sb = page.sandbox;
   var stats = ringSpriteStats(page);
   var gold = sb.glyphRingAnnuli(sb.coreRadius(288))[1];
-  var scale = sb.coreRadius(288) / sb.coreRadius(1080);
+  // T3 (CielScenes scene-wallpaper-scaling): the scale is relative to the wallpaper's own 1080 px core radius.
+  var scale = sb.coreRadius(288) / sb.wallpaperCoreRadius(1080);
   var fullRuleCount = sb.glyphRingCountForRing(gold, (gold.outerRadius - gold.innerRadius) * vm.runInContext("GLYPH_RING_GOLD_BASE_SIZE_FRACTION", sb),
     vm.runInContext("GLYPH_RING_GAP_PX", sb) * scale);
   assert.strictEqual(stats.gold.count, 3 * fullRuleCount,
@@ -750,8 +760,9 @@ test("the mini nebula is gold, alpha-only and uses the wider edge fade; the full
   assert.strictEqual(mini.gl.clearColorCalls[0][3], 0, "mini must clear the nebula buffer to alpha 0");
   assert.strictEqual(mini.gl.uniformCalls.u_mini, 1, "mini must switch the shader's gold/alpha branch on");
   // Wider than processing's (0.5..0.9): still fully transparent at the window edge (r = 1) and corners.
-  assert.strictEqual(mini.gl.uniformCalls.u_miniFadeStart, 0.75);
-  assert.strictEqual(mini.gl.uniformCalls.u_miniFadeEnd, 0.98);
+  // T3 (CielScenes scene-wallpaper-scaling): was 0.75..0.98, scaled with the 288 px ring (0.882 -> 0.80 half-sides).
+  assert.strictEqual(mini.gl.uniformCalls.u_miniFadeStart, 0.68);
+  assert.strictEqual(mini.gl.uniformCalls.u_miniFadeEnd, 0.89);
   // T2k: the mini nebula alpha is boosted ~1.4x; the fade above still brings it to exactly 0 at the edge.
   assert.ok(mini.gl.uniformCalls.u_miniGain >= 1.3 && mini.gl.uniformCalls.u_miniGain <= 1.5, "expected the mini nebula gain 1.3-1.5, got " + mini.gl.uniformCalls.u_miniGain);
   assert.ok(mini.gl.uniformCalls.u_miniFadeEnd < 1, "the nebula alpha must reach 0 before the window edge");
