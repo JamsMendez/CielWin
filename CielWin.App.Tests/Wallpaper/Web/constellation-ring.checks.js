@@ -154,17 +154,24 @@ function drawnDotRadiiPx(page, boxSize) {
     .map(function (a) { return a.radius * a.scale; });
 }
 
-// The stroke width in px drawHieroglyphBand passes to drawHieroglyph for its glyphs.
-function drawnHieroglyphStrokesPx(page, bandThickness) {
-  var widths = [];
-  var original = page.sandbox.drawHieroglyph;
-  page.sandbox.drawHieroglyph = function (context, strokes, x, y, size, angle, color, lineWidth) { widths.push(lineWidth); };
+// Every glyph one ring draw paints: the blackletter script glyphs (js/glyphs.js's drawScriptGlyph) and any stroked
+// hieroglyph (drawHieroglyph) that should no longer appear on a lettered ring.
+function recordGlyphDraws(page, draw) {
+  var script = [];
+  var strokes = 0;
+  var originalScript = page.sandbox.drawScriptGlyph;
+  var originalStroke = page.sandbox.drawHieroglyph;
+  page.sandbox.drawScriptGlyph = function (context, glyph, x, y, size, ringAngle, color, stretchY) {
+    script.push({ glyph: glyph, x: x, y: y, size: size, stretchY: stretchY === undefined ? 1 : stretchY });
+  };
+  page.sandbox.drawHieroglyph = function () { strokes++; };
   try {
-    page.sandbox.drawHieroglyphBand(makeRecordingContext().context, 0, 0, 100, 100 + bandThickness, 0);
+    draw(makeRecordingContext().context);
   } finally {
-    page.sandbox.drawHieroglyph = original;
+    page.sandbox.drawScriptGlyph = originalScript;
+    page.sandbox.drawHieroglyph = originalStroke;
   }
-  return widths;
+  return { script: script, strokes: strokes };
 }
 
 function checkConstellationDetailScale(loadPage) {
@@ -226,44 +233,62 @@ function checkConstellationDetailScale(loadPage) {
   fullDrawn.forEach(function (r) { assert.ok(Math.abs(r - dot) < 1e-9, "the full drawn dot radius must stay " + dot + ", got " + r); });
 }
 
-// The hieroglyph band's glyph stroke follows the same ratio and floor, and the full stroke stays 1.6.
-function checkHieroglyphStrokeScale(loadPage) {
-  var mini = loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" });
-  var full = loadPage({ innerWidth: 1000, innerHeight: 500 });
-  var stroke = cfg(full, "HIEROGLYPH_STROKE_PX");
-  var floor = cfg(full, "MINI_CONSTELLATION_MIN_PX");
-  var reference = cfg(full, "MINI_CONSTELLATION_REFERENCE_SCREEN");
-  var bandFraction = cfg(full, "HIEROGLYPH_BAND_OUTER_RADIUS_FRACTION") - cfg(full, "HIEROGLYPH_BAND_INNER_RADIUS_FRACTION");
-  var referenceBand = bandFraction * full.sandbox.sceneBasis(reference.width, reference.height);
-  var miniBand = bandFraction * mini.sandbox.miniSceneBasis(288, 288);
+// CielScenes blackletter script rings: the hieroglyph band, the ruler numerals, the paragraph ring and the outer glyph
+// ring draw the script glyphs (never stroked hieroglyphs) in mini and full; the band's glyphs scale with the band,
+// the paragraph ring has four rows and the outer ring keeps its radial stretch.
+function checkLetteredRingsScript(loadPage) {
+  [loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" }), loadPage({ innerWidth: 1000, innerHeight: 500 })]
+    .forEach(function (page) {
+      var sb = page.sandbox;
+      var inkHeight = 2 * cfg(page, "GLYPH_LOCAL_HALF_EXTENT");
+      var scriptPool = cfg(page, "SCRIPT_TEXT_POOL");
+      var numerals = cfg(page, "RULER_NUMERAL_POOL");
+      var rows = cfg(page, "HIEROGLYPH_BAND_ROW_COUNT");
+      var rings = {
+        hieroglyph: [function (c) { sb.drawHieroglyphBand(c, 0, 0, 100, 140, 0); }, scriptPool],
+        ruler: [function (c) { sb.drawRulerRing(c, 0, 0, 100, 0); }, numerals],
+        paragraph: [function (c) { sb.drawParagraphRing(c, 0, 0, 100, 0); }, scriptPool],
+        outer: [function (c) { sb.drawOuterGlyphRing(c, 0, 0, 100, 0); }, scriptPool],
+      };
+      var drawn = {};
+      Object.keys(rings).forEach(function (name) {
+        var rec = recordGlyphDraws(page, rings[name][0]);
+        assert.strictEqual(rec.strokes, 0, name + ": no stroked hieroglyph may be drawn");
+        assert.ok(rec.script.length > 0, name + ": expected script glyphs to be drawn");
+        rec.script.forEach(function (call) {
+          assert.ok(rings[name][1].indexOf(call.glyph) >= 0, name + ": every glyph must come from its script pool");
+        });
+        drawn[name] = rec.script;
+      });
+      drawn.hieroglyph.forEach(function (call) {
+        var expected = (40 / (rows + 1)) * 0.72 * inkHeight;
+        assert.ok(Math.abs(call.size - expected) < 1e-9, "band glyph size " + call.size + ", expected " + expected);
+      });
+      var half = recordGlyphDraws(page, function (c) { sb.drawHieroglyphBand(c, 0, 0, 100, 120, 0); }).script;
+      assert.ok(Math.abs(half[0].size * 2 - drawn.hieroglyph[0].size) < 1e-9, "band glyphs must scale with the band");
+      var radii = {};
+      drawn.paragraph.forEach(function (call) { radii[Math.round(Math.hypot(call.x, call.y) * 1e6)] = true; });
+      assert.strictEqual(Object.keys(radii).length, 4, "the paragraph ring must draw four rows");
+      assert.strictEqual(cfg(page, "PARAGRAPH_RING_ROW_COUNT"), 4);
+      var stretch = cfg(page, "OUTER_GLYPH_RADIAL_STRETCH");
+      drawn.outer.forEach(function (call) { assert.strictEqual(call.stretchY, stretch, "the outer ring keeps its radial stretch"); });
+    });
+}
 
-  // 288px: under the floor
-  assert.ok(stroke * (miniBand / referenceBand) < floor, "expected the 288px band stroke to sit under the floor");
-  var miniWidths = drawnHieroglyphStrokesPx(mini, miniBand);
-  assert.ok(miniWidths.length > 0, "expected hieroglyphs to be drawn");
-  miniWidths.forEach(function (w) { assert.strictEqual(w, floor, "mini hieroglyph stroke " + w + ", expected the floor " + floor); });
-
-  // above the floor: proportional
-  var bigBand = referenceBand * 0.9;
-  assert.ok(stroke * 0.9 > floor);
-  var bigWidths = drawnHieroglyphStrokesPx(mini, bigBand);
-  assert.ok(bigWidths.length > 0, "expected hieroglyphs to be drawn in the above-floor band (an empty list would pass vacuously)");
-  bigWidths.forEach(function (w) {
-    assert.ok(Math.abs(w - stroke * 0.9) < 1e-9, "proportional hieroglyph stroke " + w + ", expected " + stroke * 0.9);
-  });
-
-  // full: unchanged at and above the 1080p band, proportional (with the floor) below it
-  var wallBand = wallpaperReferenceBox(full, bandFraction);
-  [wallBand, referenceBand].forEach(function (band) {
-    var widths = drawnHieroglyphStrokesPx(full, band);
-    assert.ok(widths.length > 0);
-    widths.forEach(function (w) { assert.strictEqual(w, stroke, "the full hieroglyph stroke must stay " + stroke + ", got " + w); });
-  });
-  [miniBand, wallBand * 0.5].forEach(function (band) {
-    var expected = Math.max(floor, stroke * band / wallBand);
-    var widths = drawnHieroglyphStrokesPx(full, band);
-    assert.ok(widths.length > 0);
-    widths.forEach(function (w) { assert.ok(Math.abs(w - expected) < 1e-9, "full hieroglyph stroke " + w + ", expected " + expected); });
+// Every constellation is fitted to the same height (the ring's radial direction, local y): CONSTELLATION_FIGURE_MARGIN,
+// so flat figures such as Cassiopeia span the ring like the tall ones; widths never exceed that margin.
+function checkConstellationHeights(context) {
+  var pool = vm.runInContext("CONSTELLATION_POOL", context);
+  var margin = vm.runInContext("CONSTELLATION_FIGURE_MARGIN", context);
+  var figures = vm.runInContext("CONSTELLATION_FIGURES", context);
+  pool.forEach(function (figure, i) {
+    var xs = figure.points.map(function (p) { return p[0]; });
+    var ys = figure.points.map(function (p) { return p[1]; });
+    var name = figures[i % figures.length].name;
+    var height = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+    var width = Math.max.apply(null, xs) - Math.min.apply(null, xs);
+    assert.ok(Math.abs(height - margin) < 1e-9, name + ": expected height " + margin + ", got " + height);
+    assert.ok(width <= margin + 1e-9, name + ": width " + width + " exceeds " + margin);
   });
 }
 
@@ -347,5 +372,6 @@ module.exports = {
   checkConstellationTable: checkConstellationTable,
   checkTunablesMatchTwin: checkTunablesMatchTwin,
   checkConstellationDetailScale: checkConstellationDetailScale,
-  checkHieroglyphStrokeScale: checkHieroglyphStrokeScale,
+  checkLetteredRingsScript: checkLetteredRingsScript,
+  checkConstellationHeights: checkConstellationHeights,
 };

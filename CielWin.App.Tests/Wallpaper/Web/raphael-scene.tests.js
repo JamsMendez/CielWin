@@ -409,7 +409,9 @@ test("the see-through hook stamps the gold ring sprites at the scene's own radiu
     call.stamps.forEach(function (stamp, i) {
       assert.strictEqual(stamp.image, goldSet[i].canvas, "hook call #" + index + " stamp #" + i + " is the gold sprite");
       assert.ok(blueSet.every(function (sprite) { return sprite.canvas !== stamp.image; }), "never a blue ring sprite");
-      var angle = expectedRotation + (i / goldSet.length) * Math.PI * 2;
+      // CielScenes' script rings lay their glyphs out as justified words: each sprite carries its own ringAngle.
+      assert.strictEqual(typeof goldSet[i].ringAngle, "number", "gold sprite #" + i + " carries its ring angle");
+      var angle = expectedRotation + goldSet[i].ringAngle;
       assert.ok(Math.abs(stamp.offset.x - (call.offset.x + cx + Math.cos(angle) * expectedRadius)) < 1e-6 &&
         Math.abs(stamp.offset.y - (call.offset.y + cy + Math.sin(angle) * expectedRadius)) < 1e-6,
         "hook call #" + index + " stamp #" + i + " sits on the true gold ring at the scene's own rotation");
@@ -535,36 +537,69 @@ function captureRingCounts(page) {
   return calls;
 }
 
-test("the blue glyph ring adds its extra glyphs up to the most that fit without ink touching at its inner radius, and the gold ring is tripled (T11)", function () {
+// CielScenes blackletter script rings: the gold and blue rings lay composed broad-nib glyphs out as justified words
+// (glyphs.js's scriptRingLayout): one height per ring, proportional widths, wider spaces between words than between
+// letters, and no two glyphs touching even at the ring's inner ink edge, where they sit closest.
+function checkScriptRing(sb, name, sprites, annulus) {
+  var margin = sb.glyphRingEdgeMarginPx() * vm.runInContext("RING_SCRIPT_EDGE_MARGIN_FACTOR", sb);
+  var innerInk = annulus.innerRadius + margin;
+  assert.ok(sprites.length > 10, name + ": expected a full ring of glyphs, got " + sprites.length);
+  var heights = sprites.map(function (g) { return g.hh; });
+  assert.ok(Math.max.apply(null, heights) - Math.min.apply(null, heights) <= 0.5, name + ": every glyph must share one height");
+  var widths = sprites.map(function (g) { return g.hw; });
+  assert.ok(Math.max.apply(null, widths) / Math.min.apply(null, widths) > 1.5, name + ": widths must be proportional, not uniform");
+  var gaps = [];
+  sprites.forEach(function (g, i) {
+    assert.strictEqual(typeof g.ringAngle, "number", name + " glyph #" + i + " carries its ring angle");
+    var next = sprites[(i + 1) % sprites.length];
+    var step = i + 1 < sprites.length ? next.ringAngle - g.ringAngle : next.ringAngle + 2 * Math.PI - g.ringAngle;
+    assert.ok(step > 0, name + ": ring angles must increase around the ring");
+    // The sprite canvas is rounded up to whole pixels, so its half-width may exceed the ink by up to 0.5px.
+    var gap = step * innerInk - (g.hw - 0.5) - (next.hw - 0.5);
+    assert.ok(gap >= -1e-6, name + ": glyphs #" + i + " and #" + (i + 1) + " touch at the inner ink edge (gap " + gap.toFixed(2) + ")");
+    gaps.push(step * innerInk - g.hw - next.hw);
+  });
+  var smallest = Math.min.apply(null, gaps);
+  var wordSpaces = gaps.filter(function (gap) { return gap > smallest + 2; }).length;
+  assert.ok(wordSpaces >= 3, name + ": expected the glyphs grouped into words, found " + wordSpaces + " word spaces");
+}
+
+test("the gold and blue rings lay the blackletter script out as justified words that never touch at the inner edge", function () {
   var page = loadPage({ innerWidth: 1000, innerHeight: 800 });
   var calls = captureRingCounts(page);
   assert.strictEqual(calls.length, 2, "test setup sanity: expected one gold and one blue ring draw, saw " + calls.length);
+  var sb = page.sandbox;
+  var sprites = vm.runInContext("sprites", sb);
+  var annuli = sb.glyphRingAnnuli(sb.coreRadius(800));
+  assert.strictEqual(calls[0].count, sprites.outlineGlyphsGold.length, "the gold ring draws every gold sprite");
+  assert.strictEqual(calls[1].count, sprites.outlineGlyphs.length, "the blue ring draws every blue sprite");
+  checkScriptRing(sb, "gold", sprites.outlineGlyphsGold, annuli[1]);
+  checkScriptRing(sb, "blue", sprites.outlineGlyphs, annuli[3]);
+});
 
-  var sandbox = page.sandbox;
-  var r = sandbox.coreRadius(Math.min(1000, 800));
-  var annuli = sandbox.glyphRingAnnuli(r);
-  var gold = annuli[1], blue = annuli[3];
-  var goldWidth = (gold.outerRadius - gold.innerRadius) * 0.5;
-  var blueWidth = (blue.outerRadius - blue.innerRadius) * 0.25;
-
-  // Wallpaper scaling (CielScenes odd/tasks/scene-wallpaper-scaling.md T2): below a 1080 px short side the 20 px gap
-  // scales down with the composition (glyphRingGapPx), here 800 px.
-  var gap = sandbox.glyphRingGapPx();
-  assert.ok(Math.abs(gap - 20 * sandbox.coreRadius(800) / sandbox.coreRadius(1080)) < 1e-9, "the 800 px wallpaper gap scales, got " + gap);
-  var goldBase = sandbox.glyphRingCountForRing(gold, goldWidth, gap);
-  var blueBase = sandbox.glyphRingCountForRing(blue, blueWidth, gap);
-  var blueCeiling = blueBase;
-  while (sandbox.glyphRingLinearGapAtRadius(blue.innerRadius, blueCeiling + 1, blueWidth) >= 0) blueCeiling++;
-  var expectedBlue = Math.min(blueBase + 50, blueCeiling);
-
-  // T11: the gold ring is 3x the standard count (goldBase), in thin strokes that fit at that count.
-  assert.strictEqual(calls[0].count, 3 * goldBase, "expected the gold ring count to be 3 x its base " + goldBase);
-  assert.strictEqual(calls[1].count, expectedBlue,
-    "expected the blue ring to hold " + expectedBlue + " glyphs (base " + blueBase + " + 50, capped at " + blueCeiling + "), saw " + calls[1].count);
-  assert.ok(sandbox.glyphRingLinearGapAtRadius(blue.innerRadius, calls[1].count, blueWidth) >= 0,
-    "expected no ink contact at the blue ring's inner radius with " + calls[1].count + " glyphs");
-  // The number config.js documents: floor(2*PI*1.85r / (0.25*0.5r)) = floor(92.99), for any r.
-  assert.strictEqual(calls[1].count, 92, "expected the blue ring filled to its documented ceiling of 92");
+test("the script layout makes room for the extra letters from the letter gaps, keeps the word spaces, and the ring still closes", function () {
+  var sb = loadPage({ innerWidth: 1000, innerHeight: 800 }).sandbox;
+  var widths = Array.from({ length: 200 }, function (_, i) { return 6 + (i * 7) % 9; });
+  var radius = 150, letterGap = 2, wordSpace = 6;
+  var base = sb.scriptRingLayout(widths, radius, letterGap, wordSpace, 1234, 0);
+  var extra = sb.scriptRingLayout(widths, radius, letterGap, wordSpace, 1234, 6);
+  assert.strictEqual(extra.length, base.length + 6, "expected exactly six more glyphs, got " + base.length + " -> " + extra.length);
+  // With the extras every glyph still fits: consecutive glyphs never overlap and the text stays inside one turn.
+  for (var i = 1; i < extra.length; i++) {
+    var gap = (extra[i] - extra[i - 1]) * radius - (widths[i - 1] + widths[i]) / 2;
+    assert.ok(gap >= -1e-9, "glyphs #" + (i - 1) + " and #" + i + " overlap by " + (-gap));
+  }
+  // The letter gaps absorb the extras; the word spaces never drop below their minimum.
+  var spacings = [];
+  for (var j = 1; j < extra.length; j++) spacings.push((extra[j] - extra[j - 1]) * radius - (widths[j - 1] + widths[j]) / 2);
+  var tightest = Math.min.apply(null, spacings);
+  assert.ok(tightest < letterGap - 1e-9, "the letter gaps must tighten to make room, smallest is " + tightest);
+  var wordSpaces = spacings.filter(function (s) { return s > tightest + 1e-6; });
+  assert.ok(wordSpaces.length >= 3, "expected word spaces between the words, found " + wordSpaces.length);
+  wordSpaces.forEach(function (s) { assert.ok(s >= wordSpace - 1e-9, "a word space shrank below its minimum: " + s); });
+  var lastEnd = extra[extra.length - 1] * radius + widths[extra.length - 1] / 2;
+  assert.ok(lastEnd <= 2 * Math.PI * radius + 1e-9, "the laid-out text must fit in one turn");
+  assert.deepStrictEqual(sb.scriptRingLayout(widths, radius, letterGap, wordSpace, 1234, 6), extra, "the layout is deterministic");
 });
 
 test("zero or negative extra glyphs leave the base count exactly as it is", function () {
@@ -670,50 +705,29 @@ test("the stylesheet makes the mini page layers and #nebula transparent (the roo
   miniVariantChecks.checkMiniStylesheet(sceneDir, "transparent");
 });
 
-// ---- mini-scene-window T2d: the mini glyph rings stay tall strokes, and the gold ring is denser --------
-// The px-based ring model (GLYPH_RING_EDGE_MARGIN_PX = 10, GLYPH_RING_GAP_PX = 20) collapsed the glyphs to
-// short dashes at 288px (blue hh/hw 0.40, gold 0.33). In mini those px values scale with the composition
-// and gold is drawn 3x as dense in thin vertical strokes; the full page keeps the exact same sprites.
+// ---- mini-scene-window T2d / CielScenes blackletter script rings: the mini rings keep the script layout --------
 
-function ringSpriteStats(page) {
+function ringSprites(page) {
   page.sandbox.render(0); // ensureSprites() bakes them
-  var sprites = vm.runInContext("sprites", page.sandbox);
-  function stats(list) {
-    return { count: list.length, ratios: list.map(function (g) { return g.hh / g.hw; }), hw: list[0].hw, hh: list[0].hh };
-  }
-  return { gold: stats(sprites.outlineGlyphsGold), blue: stats(sprites.outlineGlyphs), glow: (sprites.outlineGlyphsGoldGlow || []).length, hasGlowKey: "outlineGlyphsGoldGlow" in sprites };
+  return vm.runInContext("sprites", page.sandbox);
 }
 
-// T3 (CielScenes scene-wallpaper-scaling): the 288 px mini ring is 0.40 of the side now (it was 0.441, past the
-// 0.41 edge fade), so the gold ring is ~9% thinner there and its 2 px body-width floor holds the sprite width:
-// the gold strokes are 2.67x taller than wide at 288 (and taller as the window grows); blue keeps >= 3.
-test("mini glyphs are tall strokes: blue height:width >= 3, gold >= 2.6", function () {
-  var page = loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" });
-  var stats = ringSpriteStats(page);
-  [["blue", 3], ["gold", 2.6]].forEach(function (entry) {
-    var worst = Math.min.apply(null, stats[entry[0]].ratios);
-    assert.ok(worst >= entry[1], entry[0] + " mini glyphs must be at least " + entry[1] + "x taller than wide, worst ratio " + worst.toFixed(2));
-  });
-});
-
-test("mini gold ring has 3x the glyphs the standard sizing rule gives at that scale, or the max that fits", function () {
+test("mini rings keep the script layout: one height per ring, proportional widths, words, no contact at the inner edge", function () {
   var page = loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" });
   var sb = page.sandbox;
-  var stats = ringSpriteStats(page);
-  var gold = sb.glyphRingAnnuli(sb.coreRadius(288))[1];
-  // T3 (CielScenes scene-wallpaper-scaling): the scale is relative to the wallpaper's own 1080 px core radius.
-  var scale = sb.coreRadius(288) / sb.wallpaperCoreRadius(1080);
-  var fullRuleCount = sb.glyphRingCountForRing(gold, (gold.outerRadius - gold.innerRadius) * vm.runInContext("GLYPH_RING_GOLD_BASE_SIZE_FRACTION", sb),
-    vm.runInContext("GLYPH_RING_GAP_PX", sb) * scale);
-  assert.strictEqual(stats.gold.count, 3 * fullRuleCount,
-    "expected " + (3 * fullRuleCount) + " gold glyphs (3 x " + fullRuleCount + "), got " + stats.gold.count);
-  assert.strictEqual(stats.glow, 0, "no gold glyph glow sprites are baked (T2k/T11)");
-  // evenly spaced and never overlapping, even at the tighter inner radius
-  // (ink width, not the sprite canvas: the canvas is rounded up to whole pixels)
-  var width = (gold.outerRadius - gold.innerRadius) * vm.runInContext("GLYPH_RING_GOLD_SLIM_SIZE_FRACTION", sb);
-  var linearGap = (2 * Math.PI / stats.gold.count) * gold.innerRadius - width;
-  assert.ok(linearGap > 0, "gold glyphs must not overlap at the inner radius, gap " + linearGap.toFixed(2));
-  assert.strictEqual(sb.goldGlyphRingDrawParams(0).count, stats.gold.count, "the see-through hook must draw the same gold count");
+  var sprites = ringSprites(page);
+  var annuli = sb.glyphRingAnnuli(sb.coreRadius(288));
+  checkScriptRing(sb, "mini gold", sprites.outlineGlyphsGold, annuli[1]);
+  checkScriptRing(sb, "mini blue", sprites.outlineGlyphs, annuli[3]);
+  assert.strictEqual((sprites.outlineGlyphsGoldGlow || []).length, 0, "no gold glyph glow sprites are baked (T2k/T11)");
+});
+
+test("mini script glyphs are taller than wide, so the rings never collapse into dashes", function () {
+  var sprites = ringSprites(loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" }));
+  [["gold", sprites.outlineGlyphsGold], ["blue", sprites.outlineGlyphs]].forEach(function (entry) {
+    var median = entry[1].map(function (g) { return g.hh / g.hw; }).sort(function (x, y) { return x - y; })[entry[1].length >> 1];
+    assert.ok(median >= 1.2, entry[0] + " mini glyphs must read as letters, median height:width " + median.toFixed(2));
+  });
 });
 
 test("mini gold ring count is capped at the most that fit when 3x the standard rule would overlap", function () {
@@ -731,24 +745,16 @@ test("mini gold ring count is capped at the most that fit when 3x the standard r
   assert.ok(sb.glyphRingLinearGapAtRadius(gold.innerRadius, count, wide) >= 0, "the capped glyphs must not overlap at the inner radius");
 });
 
-test("the full variant gets the same gold ring: 3x the standard count in thin tall strokes, no glow; the blue ring is unchanged (1920x1080)", function () {
+test("the full variant (1920x1080) keeps the same script layout on both rings, with no gold glow", function () {
   var page = loadPage({ innerWidth: 1920, innerHeight: 1080 });
   var sb = page.sandbox;
-  var stats = ringSpriteStats(page);
-  var gold = sb.glyphRingAnnuli(sb.coreRadius(1080))[1];
-  var thickness = gold.outerRadius - gold.innerRadius;
-  // the standard (pre-T11) rule: 0.5-wide glyphs with the 20px gap -> 35 at this size
-  var standard = sb.glyphRingCountForRing(gold, thickness * vm.runInContext("GLYPH_RING_GOLD_BASE_SIZE_FRACTION", sb), vm.runInContext("GLYPH_RING_GAP_PX", sb));
-  assert.strictEqual(standard, 35, "test setup: the standard gold count at 1920x1080 is 35");
-  assert.strictEqual(stats.gold.count, 3 * standard, "expected " + (3 * standard) + " gold glyphs in the full scene, got " + stats.gold.count);
-  assert.strictEqual(stats.glow, 0, "the full scene bakes no gold glow sprites");
-  var width = thickness * vm.runInContext("GLYPH_RING_GOLD_SLIM_SIZE_FRACTION", sb);
-  assert.ok(sb.glyphRingLinearGapAtRadius(gold.innerRadius, stats.gold.count, width) > 0, "the full gold glyphs must not overlap at the inner radius");
-  assert.ok(Math.min.apply(null, stats.gold.ratios) >= 3, "the full gold glyphs must be tall strokes, worst ratio " + Math.min.apply(null, stats.gold.ratios));
-  // blue ring: exactly as before
-  assert.strictEqual(stats.blue.count, 92);
-  assert.ok(Math.abs(stats.blue.hw - 13.5) < 0.01 && Math.abs(stats.blue.hh - 42.5) < 0.01, "blue sprite " + stats.blue.hw + "x" + stats.blue.hh);
-  assert.strictEqual(sb.goldGlyphRingDrawParams(0).count, stats.gold.count, "the see-through hook must draw the same gold count");
+  var sprites = ringSprites(page);
+  var annuli = sb.glyphRingAnnuli(sb.coreRadius(1080));
+  checkScriptRing(sb, "full gold", sprites.outlineGlyphsGold, annuli[1]);
+  checkScriptRing(sb, "full blue", sprites.outlineGlyphs, annuli[3]);
+  assert.strictEqual((sprites.outlineGlyphsGoldGlow || []).length, 0, "the full scene bakes no gold glow sprites");
+  // The blue band is thicker than the gold one, so its letters are taller.
+  assert.ok(sprites.outlineGlyphs[0].hh > sprites.outlineGlyphsGold[0].hh, "blue glyphs must be taller than gold glyphs");
 });
 
 // ---- mini-scene-window T2e: gold nebula (mini only) and independently rotating rays ---------------------

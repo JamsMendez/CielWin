@@ -658,8 +658,12 @@ test("mini scales the constellation dots and lines with the ring (floor 0.5px); 
   constellationRingChecks.checkConstellationDetailScale(loadPage);
 });
 
-test("mini scales the hieroglyph band's glyph stroke with the ring (floor, proportional above it); the full variant keeps 1.6px", function () {
-  constellationRingChecks.checkHieroglyphStrokeScale(loadPage);
+test("the lettered rings draw the blackletter script in mini and full: band glyphs scale with the band, four paragraph rows", function () {
+  constellationRingChecks.checkLetteredRingsScript(loadPage);
+});
+
+test("every constellation is fitted to the same height, so flat figures span the ring like tall ones", function () {
+  constellationRingChecks.checkConstellationHeights(loadPage({ innerWidth: 1000, innerHeight: 500 }).sandbox);
 });
 
 test("mini draws an occluding dark base under every ring band and the planet hollow (destination-over, band radii only); the full variant draws none", function () {
