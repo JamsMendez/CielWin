@@ -630,14 +630,15 @@ test("the scene variant parses from the URL: default full, mini recognized, garb
   miniVariantChecks.checkVariantParse(sceneDir);
 });
 
+// CielScenes feat/raphael-mini-stars: the mini also keeps the stars that fly out from the centre and back.
 test("mini draws only its kept layers (plus the gold nebula and the rays), on a transparent canvas, and still renders the alert overlay", function () {
   miniVariantChecks.checkMiniLayers({
     loadPage: loadPage,
     frameFunction: "render",
     miniOnly: ["drawMiniSceneBase"],
     keepNebula: true,
-    keep: ["drawGlyphRings", "drawGoldenHexadecagon", "drawPerspectiveRays", "drawCentralCore"],
-    drop: ["drawFeathers", "drawSoftOvalFields", "drawCircularOvalFields", "drawStars", "drawRadialStreaks", "drawLensFlares", "drawChromaticSideLoops", "drawFilmGrain", "drawVignette", "drawGlyphCounters"],
+    keep: ["drawGlyphRings", "drawGoldenHexadecagon", "drawPerspectiveRays", "drawCentralCore", "drawStars"],
+    drop: ["drawFeathers", "drawSoftOvalFields", "drawCircularOvalFields", "drawRadialStreaks", "drawLensFlares", "drawChromaticSideLoops", "drawFilmGrain", "drawVignette", "drawGlyphCounters"],
   });
 });
 
