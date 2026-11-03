@@ -33,6 +33,8 @@ public sealed class WebViewAlertLayerController : IDisposable
     private readonly ICompositionOverlaySurface _host;
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _poll;
+    // One-shot: the fade-out of the leaving page before SwitchScene navigates (see SceneWebServer.HostStyle).
+    private readonly DispatcherTimer _sceneFade;
     private readonly Action<string>? _trace;
     private readonly AlertLayerPreloadState _state;
     // Every scene page shares one virtual host mapping (see CreateAsync), so only the scene SEGMENT
@@ -94,6 +96,9 @@ public sealed class WebViewAlertLayerController : IDisposable
         _dispatcher = Dispatcher.CurrentDispatcher;
         _poll = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background,
             (_, _) => Poll(), _dispatcher);
+        _sceneFade = new DispatcherTimer(SceneWebServer.SceneFadeDuration, DispatcherPriority.Normal,
+            (_, _) => OnSceneFadedOut(), _dispatcher);
+        _sceneFade.Stop();
     }
 
     /// <summary>
@@ -162,7 +167,37 @@ public sealed class WebViewAlertLayerController : IDisposable
 
         _currentScene = scene;
         if (_controller is null) return;
+        // A fade already under way navigates to whatever scene is current when it ends.
+        if (_sceneFade.IsEnabled) return;
 
+        // A page that is showing fades out first; one that is still loading is simply replaced.
+        if (_navigationCompleted && _pageReportedReady)
+        {
+            try
+            {
+                _controller.CoreWebView2.PostWebMessageAsJson(AlertLayerMessages.SceneLeave);
+                _sceneFade.Start();
+                return;
+            }
+            catch (Exception ex) { Debug.WriteLine(ex); _trace?.Invoke(AlertLayerTrace.Error("post-scene-leave", ex)); }
+        }
+
+        NavigateToCurrentScene();
+    }
+
+    /// <summary>The leaving page is faded out: load the current scene, which fades itself in.</summary>
+    private void OnSceneFadedOut()
+    {
+        _sceneFade.Stop();
+        if (_disposed || _controller is null) return;
+        // Runs inside the dispatcher, so nothing escapes.
+        try { NavigateToCurrentScene(); }
+        catch (Exception ex) { Debug.WriteLine(ex); _trace?.Invoke(AlertLayerTrace.Error("scene-switch", ex)); }
+    }
+
+    private void NavigateToCurrentScene()
+    {
+        if (_controller is null) return;
         // Mirrors the Navigate step of CreateAsync: reset the ready-state flags the SAME way, so the
         // "ready" handshake runs again for the new page instead of treating this controller as already
         // ready for a page it has not actually loaded yet.
@@ -485,6 +520,8 @@ public sealed class WebViewAlertLayerController : IDisposable
     private void TearDown(string reason, bool dropEnvironment = false)
     {
         _state.ControllerLost();
+        // The recreated controller navigates to the current scene itself.
+        _sceneFade.Stop();
         ++_epoch;
         _navigationCompleted = false;
         _pageReportedReady = false;
@@ -543,6 +580,7 @@ public sealed class WebViewAlertLayerController : IDisposable
         CheckAccess();
         if (_disposed) return;
         _poll.Stop();
+        _sceneFade.Stop();
         _state.Hide();
         TearDown("disposed", dropEnvironment: true);
         _disposed = true;

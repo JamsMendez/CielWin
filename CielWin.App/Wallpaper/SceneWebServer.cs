@@ -31,12 +31,29 @@ internal static class SceneWebServer
     /// <summary>The scene origin's host, an RFC 6761 reserved name (never <c>.local</c>).</summary>
     public const string HostName = "cielwin-scene.example";
 
-    /// <summary>Makes the mini variant's luminance-key root transparent (CielWin composites real alpha).</summary>
-    internal const string HostStyle = "html.scene-mini{background:transparent!important}";
+    /// <summary>
+    /// How long a scene page takes to fade in when it loads, and to fade out before a scene switch navigates
+    /// away from it. Must match the durations written into <see cref="HostStyle"/>.
+    /// </summary>
+    public static readonly TimeSpan SceneFadeDuration = TimeSpan.FromMilliseconds(400);
 
-    /// <summary>Restores the unkeyed alert letter colors; runs after every scene script, before any frame.</summary>
+    /// <summary>
+    /// Makes the mini variant's luminance-key root transparent (CielWin composites real alpha), fades every
+    /// page in as it loads, and fades a page marked <c>cielwin-scene-leaving</c> out (see <see cref="HostScript"/>).
+    /// </summary>
+    internal const string HostStyle =
+        "html.scene-mini{background:transparent!important}" +
+        "html{animation:cielwin-scene-in 400ms ease-out backwards}" +
+        "@keyframes cielwin-scene-in{from{opacity:0}}" +
+        "html.cielwin-scene-leaving{animation:none;opacity:0;transition:opacity 400ms ease-in}";
+
+    /// <summary>
+    /// Restores the unkeyed alert letter colors, and marks the page leaving on the host's <c>scene-leave</c>
+    /// message so <see cref="HostStyle"/> fades it out. Runs after every scene script, before any frame.
+    /// </summary>
     internal const string HostScript =
-        "(function(){try{var t=FAILURE_OVERLAY_THEMES;for(var k in t){if(t[k]&&t[k].letters){t[k].keyedLetters=t[k].letters;}}}catch(_){}})();";
+        "(function(){try{var t=FAILURE_OVERLAY_THEMES;for(var k in t){if(t[k]&&t[k].letters){t[k].keyedLetters=t[k].letters;}}}catch(_){}})();" +
+        "(function(){try{window.chrome.webview.addEventListener(\"message\",function(e){var d=e.data;if(d&&d.type===\"scene-leave\"){document.documentElement.classList.add(\"cielwin-scene-leaving\");}});}catch(_){}})();";
 
     private static readonly Regex CspMeta = new(
         "(<meta\\s+http-equiv=\"Content-Security-Policy\"\\s+content=\")([^\"]*)(\")",

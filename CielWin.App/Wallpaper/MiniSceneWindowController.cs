@@ -126,14 +126,21 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
     private Rectangle? _home;
     private IDisposable? _poll;
     private bool _dodgeFailing;
+    private readonly Func<TimeSpan, Action, IDisposable>? _scheduleDelay;
+    // The fade-out of the leaving page before a scene switch navigates; null when no switch is under way.
+    private IDisposable? _sceneFade;
 
     /// <param name="dodgeDesktop">Cursor and work area for the cursor dodge; null: no dodge.</param>
     /// <param name="schedulePoll">Runs a callback on this thread every interval until disposed; null: no dodge.</param>
+    /// <param name="scheduleDelay">Runs a callback on this thread once after a delay unless disposed first;
+    /// null: scene switches navigate at once, without fading the leaving page out.</param>
     public MiniSceneWindowController(
         Func<IMiniSceneSurface> surfaceFactory, IMiniSceneBrowser browser, Action<string>? trace = null,
         Func<DateTimeOffset>? clock = null, IFrameSource? frames = null, int fps = 60,
-        IMiniDodgeDesktop? dodgeDesktop = null, Func<TimeSpan, Action, IDisposable>? schedulePoll = null)
+        IMiniDodgeDesktop? dodgeDesktop = null, Func<TimeSpan, Action, IDisposable>? schedulePoll = null,
+        Func<TimeSpan, Action, IDisposable>? scheduleDelay = null)
     {
+        _scheduleDelay = scheduleDelay;
         _fps = fps;
         _dodgeDesktop = dodgeDesktop;
         _schedulePoll = schedulePoll;
@@ -166,6 +173,17 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
             schedulePoll: (interval, callback) =>
             {
                 var timer = new DispatcherTimer(interval, DispatcherPriority.Background, (_, _) => callback(), dispatcher);
+                timer.Start();
+                return new TimerStopper(timer);
+            },
+            scheduleDelay: (delay, callback) =>
+            {
+                DispatcherTimer? timer = null;
+                timer = new DispatcherTimer(delay, DispatcherPriority.Normal, (_, _) =>
+                {
+                    timer!.Stop();
+                    callback();
+                }, dispatcher);
                 timer.Start();
                 return new TimerStopper(timer);
             });
@@ -237,8 +255,35 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         if (_scene == scene) return true;
         _scene = scene;
         // Before the browser is attached only the scene is recorded: the first navigation reads it.
-        if (_attached) NavigateToScene();
+        if (!_attached) return true;
+        // A fade already under way navigates to whatever scene is current when it ends.
+        if (_sceneFade is not null) return true;
+        // A page that is not showing yet has nothing to fade out, and without a timer there is no fade.
+        if (!_pageReady || _scheduleDelay is null)
+        {
+            NavigateToScene();
+            return true;
+        }
+
+        _browser.PostMessage(AlertLayerMessages.SceneLeave);
+        _sceneFade = _scheduleDelay(SceneWebServer.SceneFadeDuration, OnSceneFadedOut);
         return true;
+    }
+
+    /// <summary>The leaving page is faded out: load the current scene, which fades itself in.</summary>
+    private void OnSceneFadedOut()
+    {
+        CancelSceneFade();
+        if (_disposed || !_attached) return;
+        // Runs inside the dispatcher, so nothing escapes.
+        try { NavigateToScene(); }
+        catch (Exception ex) { _trace?.Invoke($"mini-window: scene-switch failed error={ex.GetType().Name}"); }
+    }
+
+    private void CancelSceneFade()
+    {
+        _sceneFade?.Dispose();
+        _sceneFade = null;
     }
 
     public void MoveTo(Rectangle bounds)
@@ -313,6 +358,7 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         StopGlide();
         _poll?.Dispose();
         _poll = null;
+        CancelSceneFade();
         _disposed = true;
         _browser.Ready -= OnReady;
         _browser.Failed -= OnFailed;
@@ -350,6 +396,8 @@ public sealed class MiniSceneWindowController : IMiniSceneWindow
         if (_disposed) return;
         _attached = false;
         _pageReady = false;
+        // The recovery attach navigates to the current scene itself.
+        CancelSceneFade();
         _trace?.Invoke($"mini-window: {reason}");
         if (_surface is not { } surface) return;
         var now = _clock();
