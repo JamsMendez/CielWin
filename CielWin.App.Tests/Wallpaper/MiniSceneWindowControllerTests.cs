@@ -209,6 +209,156 @@ public sealed class MiniSceneWindowControllerTests
             "https://cielwin-scene.example/explorer/index.html?fps=60&variant=mini", browser.Navigations[^1]);
     }
 
+    /// <summary>One-shot delays the test fires by hand.</summary>
+    private sealed class FakeDelays
+    {
+        public List<(TimeSpan Delay, Action Callback, Handle Handle)> Scheduled { get; } = [];
+
+        public IDisposable Schedule(TimeSpan delay, Action callback)
+        {
+            var handle = new Handle();
+            Scheduled.Add((delay, callback, handle));
+            return handle;
+        }
+
+        public void FireLast()
+        {
+            var (_, callback, handle) = Scheduled[^1];
+            if (!handle.Disposed) callback();
+        }
+
+        public sealed class Handle : IDisposable
+        {
+            public bool Disposed;
+            public void Dispose() => Disposed = true;
+        }
+    }
+
+    private (MiniSceneWindowController Controller, FakeBrowser Browser, FakeDelays Delays) CreateShownAndReady()
+    {
+        var surface = new FakeSurface();
+        var browser = new FakeBrowser();
+        var delays = new FakeDelays();
+        var controller = new MiniSceneWindowController(
+            () => surface, browser, _trace.Add, () => _now, _frames, scheduleDelay: delays.Schedule);
+        controller.Show(WallpaperScene.Processing, Corner);
+        browser.AttachResult.SetResult(true);
+        browser.RaiseReady();
+        return (controller, browser, delays);
+    }
+
+    [Fact]
+    public void SwitchingOnAReadyPageFadesItOutAndNavigatesOnlyOnceTheFadeIsOver()
+    {
+        var (controller, browser, delays) = CreateShownAndReady();
+
+        Assert.True(controller.SwitchScene(WallpaperScene.Explorer));
+
+        Assert.Equal([AlertLayerMessages.SceneLeave], browser.Messages);
+        Assert.Single(browser.Navigations);
+        Assert.Equal(SceneWebServer.SceneFadeDuration, Assert.Single(delays.Scheduled).Delay);
+
+        delays.FireLast();
+
+        Assert.Equal(
+            "https://cielwin-scene.example/explorer/index.html?fps=60&variant=mini", browser.Navigations[^1]);
+        Assert.Equal(2, browser.Navigations.Count);
+    }
+
+    [Fact]
+    public void SwitchesDuringTheFadeNavigateOnceToTheLatestScene()
+    {
+        var (controller, browser, delays) = CreateShownAndReady();
+
+        controller.SwitchScene(WallpaperScene.Explorer);
+        controller.SwitchScene(WallpaperScene.Idle);
+        delays.FireLast();
+
+        Assert.Single(delays.Scheduled);
+        Assert.Single(browser.Messages);
+        Assert.Equal(
+            [
+                "https://cielwin-scene.example/processing/index.html?fps=60&variant=mini",
+                "https://cielwin-scene.example/idle/index.html?fps=60&variant=mini",
+            ],
+            browser.Navigations);
+    }
+
+    [Fact]
+    public void TheNextSwitchAfterAFadeFadesAgain()
+    {
+        var (controller, browser, delays) = CreateShownAndReady();
+        controller.SwitchScene(WallpaperScene.Explorer);
+        delays.FireLast();
+        browser.RaiseReady();
+
+        controller.SwitchScene(WallpaperScene.Idle);
+
+        Assert.Equal(2, delays.Scheduled.Count);
+        Assert.Equal([AlertLayerMessages.SceneLeave, AlertLayerMessages.SceneLeave], browser.Messages);
+        Assert.Equal(2, browser.Navigations.Count);
+    }
+
+    [Fact]
+    public void DisposingDuringTheFadeCancelsItsNavigation()
+    {
+        var (controller, browser, delays) = CreateShownAndReady();
+        controller.SwitchScene(WallpaperScene.Explorer);
+
+        controller.Dispose();
+
+        Assert.True(delays.Scheduled[^1].Handle.Disposed);
+        delays.Scheduled[^1].Callback();
+        Assert.Single(browser.Navigations);
+    }
+
+    [Fact]
+    public void ABrowserFailureDuringTheFadeCancelsItAndTheRecoveryLoadsTheNewScene()
+    {
+        var (controller, browser, delays) = CreateShownAndReady();
+        controller.SwitchScene(WallpaperScene.Explorer);
+
+        FailAndRecover(browser);
+
+        Assert.True(delays.Scheduled[^1].Handle.Disposed);
+        Assert.Equal(
+            [
+                "https://cielwin-scene.example/processing/index.html?fps=60&variant=mini",
+                "https://cielwin-scene.example/explorer/index.html?fps=60&variant=mini",
+            ],
+            browser.Navigations);
+    }
+
+    [Fact]
+    public void ANavigationFailureAfterTheFadeIsTracedInsteadOfEscapingTheTimer()
+    {
+        var (controller, browser, delays) = CreateShownAndReady();
+        controller.SwitchScene(WallpaperScene.Explorer);
+        browser.ThrowOnNavigate = true;
+
+        delays.FireLast();
+
+        Assert.Contains(_trace, line => line.StartsWith("mini-window: scene-switch failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SwitchingBeforeThePageIsReadyNavigatesAtOnceWithoutAFade()
+    {
+        var surface = new FakeSurface();
+        var browser = new FakeBrowser();
+        var delays = new FakeDelays();
+        var controller = new MiniSceneWindowController(
+            () => surface, browser, _trace.Add, () => _now, _frames, scheduleDelay: delays.Schedule);
+        controller.Show(WallpaperScene.Processing, Corner);
+        browser.AttachResult.SetResult(true);
+
+        controller.SwitchScene(WallpaperScene.Explorer);
+
+        Assert.Empty(delays.Scheduled);
+        Assert.Empty(browser.Messages);
+        Assert.Equal(2, browser.Navigations.Count);
+    }
+
     [Fact]
     public void SwitchingBeforeTheBrowserIsAttachedOnlyRecordsTheSceneForTheFirstNavigation()
     {

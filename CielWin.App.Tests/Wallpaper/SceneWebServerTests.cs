@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using CielWin.App.Alerts;
+using CielWin.App.Tests.Alerts;
 using CielWin.App.Wallpaper;
 
 namespace CielWin.App.Tests.Wallpaper;
@@ -112,7 +114,84 @@ public sealed class SceneWebServerTests
             Assert.Contains("html.scene-mini", css);
         }
 
-        Assert.Equal("html.scene-mini{background:transparent!important}", SceneWebServer.HostStyle);
+        Assert.StartsWith("html.scene-mini{background:transparent!important}", SceneWebServer.HostStyle);
+    }
+
+    [Fact]
+    public void HostStyle_FadesEveryPageInAndFadesALeavingPageOutOverTheSceneFade()
+    {
+        var fade = $"{SceneWebServer.SceneFadeDuration.TotalMilliseconds}ms";
+
+        Assert.Equal(TimeSpan.FromMilliseconds(400), SceneWebServer.SceneFadeDuration);
+        Assert.Contains($"html{{animation:cielwin-scene-in {fade} ease-out backwards}}", SceneWebServer.HostStyle);
+        Assert.Contains("@keyframes cielwin-scene-in{from{opacity:0}}", SceneWebServer.HostStyle);
+        Assert.Contains(
+            $"html.cielwin-scene-leaving{{animation:none;opacity:0;transition:opacity {fade} ease-in}}",
+            SceneWebServer.HostStyle);
+    }
+
+    [RequiresNodeFact]
+    public void HostScript_MarksThePageLeavingOnlyOnTheSceneLeaveMessage()
+    {
+        // A minimal page: the host script registers its listener; the harness then delivers messages.
+        var harness = """
+            var classes = [], listeners = [];
+            var document = { documentElement: { classList: { add: function (c) { classes.push(c); } } } };
+            var window = { chrome: { webview: { addEventListener: function (t, f) { if (t === "message") listeners.push(f); } } } };
+            """ + SceneWebServer.HostScript + """
+
+            function send(data) { listeners.forEach(function (f) { f({ data: data }); }); }
+            send({ type: "hide" });
+            send("scene-leave");
+            var before = classes.length;
+            send(JSON.parse(process.argv[2]));
+            console.log(before + "|" + classes.join(","));
+            """;
+        var output = RunNode(harness, AlertLayerMessages.SceneLeave);
+
+        Assert.Equal("0|cielwin-scene-leaving", output);
+    }
+
+    [RequiresNodeFact]
+    public void HostScript_StillRestoresTheLetterColorsWithoutTheWebViewBridge()
+    {
+        // Outside WebView2 (no window.chrome) the fade listener must neither throw nor stop the letter fix.
+        var harness = """
+            var window = {};
+            var FAILURE_OVERLAY_THEMES = { failed: { letters: "plain", keyedLetters: "keyed" } };
+            """ + SceneWebServer.HostScript + """
+
+            console.log(FAILURE_OVERLAY_THEMES.failed.keyedLetters + "|" + process.argv[2]);
+            """;
+
+        Assert.Equal("plain|ok", RunNode(harness, "ok"));
+    }
+
+    private static string RunNode(string script, string argument)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cielwin-host-script-{Guid.NewGuid():N}.js");
+        File.WriteAllText(path, script);
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("node")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            start.ArgumentList.Add(path);
+            start.ArgumentList.Add(argument);
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            Assert.True(process.WaitForExit(30_000), "node did not finish");
+            Assert.True(process.ExitCode == 0, stderr.Result);
+            return stdout.Result.Trim();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]

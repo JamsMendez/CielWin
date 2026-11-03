@@ -151,6 +151,32 @@ public sealed class WebViewAlertLayerControllerTests
     }
 
     /// <summary>
+    /// Structural (the WebView2 calls are hardware-only): a switch on a ready page posts the leave message
+    /// and arms the fade timer instead of navigating; the timer navigates; teardown and dispose cancel it.
+    /// </summary>
+    [Fact]
+    public void ASceneSwitchOnAReadyPageFadesItOutBeforeNavigating()
+    {
+        Assert.Equal("{\"type\":\"scene-leave\"}", AlertLayerMessages.SceneLeave);
+        var source = ReadControllerSource();
+        var switchStart = source.IndexOf("public void SwitchScene(", StringComparison.Ordinal);
+        var switchBody = source[switchStart..source.IndexOf("private void OnSceneFadedOut()", switchStart, StringComparison.Ordinal)];
+        Assert.Contains("if (_sceneFade.IsEnabled) return;", switchBody);
+        Assert.Contains("if (_navigationCompleted && _pageReportedReady)", switchBody);
+        Assert.True(
+            switchBody.IndexOf("PostWebMessageAsJson(AlertLayerMessages.SceneLeave);", StringComparison.Ordinal)
+            < switchBody.IndexOf("_sceneFade.Start();", StringComparison.Ordinal));
+        Assert.DoesNotContain("CoreWebView2.Navigate(", switchBody);
+        Assert.Contains("SceneWebServer.SceneFadeDuration", source);
+        Assert.Contains("(_, _) => OnSceneFadedOut()", source);
+
+        var tearDown = source.IndexOf("private void TearDown(", StringComparison.Ordinal);
+        Assert.True(source.IndexOf("_sceneFade.Stop();", tearDown, StringComparison.Ordinal) > tearDown);
+        var dispose = source.IndexOf("public void Dispose()", StringComparison.Ordinal);
+        Assert.True(source.IndexOf("_sceneFade.Stop();", dispose, StringComparison.Ordinal) > dispose);
+    }
+
+    /// <summary>
     /// Structural (like every WebView2-bound assertion in this file): the
     /// desired pause state survives a page that is not ready yet or is recreated, so it is re-posted
     /// when the page reports ready, .

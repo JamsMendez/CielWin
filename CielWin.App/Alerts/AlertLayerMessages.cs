@@ -20,6 +20,12 @@ internal static class AlertLayerMessages
     public const string Resume = "{\"type\":\"resume\"}";
 
     /// <summary>
+    /// Tells the scene page it is about to be replaced: the host script (SceneWebServer.HostScript) fades it
+    /// out, and the host navigates to the next scene once SceneWebServer.SceneFadeDuration has passed.
+    /// </summary>
+    public const string SceneLeave = "{\"type\":\"scene-leave\"}";
+
+    /// <summary>
     /// The <c>{type:"show",...}</c> message for <paramref name="request"/>. The work area is physical
     /// pixels relative to the layer surface, all zero when unknown (the page then lays out on the
     /// whole canvas), and clamped to zero or more so a bad rect can never fail an alert.

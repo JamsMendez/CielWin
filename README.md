@@ -47,7 +47,8 @@ git submodule update --init
 The shared pages are written for CieLinux first. CielWin keeps its platform differences in the host
 (`CielWin.App/Wallpaper/SceneWebServer.cs`), never in the shared files: it serves the pages under
 `https://cielwin-scene.example/`, rewrites their `qrc:` Content-Security-Policy to `'self'`, and makes
-the mini variant's luminance-key background transparent again. To take a newer CielScenes:
+the mini variant's luminance-key background transparent again. It also fades every page in as it
+loads and the leaving page out before a scene switch. To take a newer CielScenes:
 `git submodule update --remote CielWin.App/Wallpaper/Web`, then commit the new submodule pointer.
 
 | Task | Command |
@@ -85,6 +86,7 @@ dotnet test CielWin.sln
 | `scene-mini` | Scene Mini | A small square, always-on-top, click-through scene window in the work area; the desktop background stays as Windows has it |
 
 Scenes (`scene`): `processing` (default), `explorer`, `idle`, `raphael`.
+Switching scene fades the current one out and the new one in (400 ms each), in both modes.
 
 ### Frame rate
 
