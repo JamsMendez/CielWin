@@ -812,7 +812,7 @@ test("mini occludes the background under the whole processing structure: a desti
   var minD = 288;
   var widestBand = captured.page.sandbox.foldingBandParameters(0).reduce(function (m, b) { return Math.max(m, b[0], b[1]); }, 0);
   assert.ok(Math.abs(captured.call.cx - 288 * 0.505) < 1e-6 && Math.abs(captured.call.cy - 288 * 0.515) < 1e-6, "the base must be centered on the structure");
-  assert.ok(captured.call.solid >= minD * 0.30 && captured.call.solid < widestBand, "solid radius " + captured.call.solid + " must cover the core of the structure and stay inside the widest orbit " + widestBand);
+  assert.ok(captured.call.solid >= minD * 0.30 && captured.call.solid <= widestBand, "solid radius " + captured.call.solid + " must cover the core of the structure and reach no further than the widest orbit " + widestBand);
   assert.ok(captured.call.falloff >= widestBand * 0.95 && captured.call.falloff <= minD * 0.41, "the soft edge must end at about the orbits' extent (" + widestBand + ") and inside the window fade, got " + captured.call.falloff);
   assert.ok(captured.call.falloff > captured.call.solid, "expected a soft falloff band");
 });
@@ -957,21 +957,22 @@ test("mini scales the sphere piece strokes, the folding band lines and the prism
   near(miniWidths[2], 3.2 * S, "mini prism edge width");
 });
 
-// ---- mini-scene-window T2m: the two white folding bands ("orbits", drawAtomicOrbits) are minD*0.025 wide -- about
-// 7px at 288, far too thick in the small window. Mini thins every band by MINI_FOLDING_BAND_WIDTH_FACTOR; radii,
+// ---- mini-scene-window T2m: the two white folding bands ("orbits", drawAtomicOrbits) are minD*0.018/0.016 wide --
+// about 5px at 288, too thick in the small window. Mini thins every band by MINI_FOLDING_BAND_WIDTH_FACTOR; radii,
 // folding and animation are untouched, and the full scene keeps its exact widths.
 
-test("mini thins the folding bands to ~2.5px at 288 (radii unchanged); the full widths stay minD * 0.025/0.023/0.018", function () {
+test("mini thins the folding bands to ~2px at 288 (radii unchanged); the full widths stay minD * 0.018/0.016", function () {
   var mini = loadPage({ innerWidth: 288, innerHeight: 288, search: "?variant=mini" });
   var full = loadPage({ innerWidth: 1000, innerHeight: 500 });
-  var fullWidths = [0.025, 0.023, 0.018];
+  var fullWidths = [0.018, 0.016];
+  assert.strictEqual(full.sandbox.foldingBandParameters(0.3).length, fullWidths.length, "the scene draws two folding bands");
   full.sandbox.foldingBandParameters(0.3).forEach(function (b, i) {
     assert.strictEqual(b[3], 500 * fullWidths[i], "the full band " + i + " width must stay minD * " + fullWidths[i]);
   });
   var miniBands = mini.sandbox.foldingBandParameters(0.3);
   var reference = full.sandbox.foldingBandParameters(0.3);
   var widest = Math.max.apply(null, miniBands.map(function (b) { return b[3]; }));
-  assert.ok(widest >= 2 && widest <= 3, "the widest mini band must be 2-3px at 288, got " + widest);
+  assert.ok(widest >= 1.5 && widest <= 3, "the widest mini band must be 1.5-3px at 288, got " + widest);
   var factor = vm.runInContext("MINI_FOLDING_BAND_WIDTH_FACTOR", mini.sandbox);
   miniBands.forEach(function (b, i) {
     assert.ok(Math.abs(b[3] - 288 * fullWidths[i] * factor) < 1e-9, "mini band " + i + " width must be the full proportion times the factor");
