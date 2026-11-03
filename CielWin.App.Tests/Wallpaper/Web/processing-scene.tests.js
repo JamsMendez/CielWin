@@ -841,15 +841,16 @@ test("mini scales the processing structure's fixed px sizes by min(W,H)/1440 wit
   near(mini.sandbox.structurePx(12, 1), 12 * S, "structurePx above the floor");
   assert.strictEqual(mini.sandbox.structurePx(1.45, 0.5), 0.5, "structurePx must honor the floor");
 
-  // orbit blocks: 7..19px squares in the full scene (before the depth scale), 1.5px floor in mini
-  var block = { ring: 0, phase: 0, radialJitter: 1, size: 12, tilt: 0 };
-  var fullState = full.sandbox.orbitBlockState(0, 0, 0, block);
-  var miniState = mini.sandbox.orbitBlockState(0, 0, 0, block);
-  var depth = 0.90 + fullState.front * 0.74;
-  near(fullState.size, 12 * depth, "full block size");
-  near(miniState.size, 12 * S * depth, "mini block size");
-  var smallest = mini.sandbox.orbitBlockState(0, 0, 0, { ring: 0, phase: 0, radialJitter: 1, size: 7, tilt: 0 });
-  near(smallest.size, 1.5 * (0.90 + smallest.front * 0.74), "the smallest mini block keeps the 1.5px floor");
+  // orbit blocks: sized from min(W, H) like the octagon (no structurePx); in both variants the squares' inner
+  // side keeps ORBIT_BLOCK_OCTAGON_GAP * octagon radius of clearance outside the octagon's visible edge
+  [[mini, 288], [full, 500]].forEach(function (pair) {
+    var clearance = vm.runInContext(
+      "(function () { var shape = orbitBlockTiltShape(); var R = orbitBlockRadius(shape);" +
+      " var r = " + pair[1] + " * OCTAGON_RADIUS_FACTOR;" +
+      " return (R - R * orbitBlockSideRatio() * shape.innerX - octagonVisibleOuterRadius(r)) / r; })()",
+      pair[0].sandbox);
+    near(clearance, vm.runInContext("ORBIT_BLOCK_OCTAGON_GAP", pair[0].sandbox), "orbit clearance at " + pair[1] + "px");
+  });
 
   // octagon: 6.8px / 5.1px strokes, 20px blur at rest
   // S4a: the full variant bakes its glows on the first call (the bake canvases share this mock context, so
