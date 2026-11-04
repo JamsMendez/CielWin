@@ -340,7 +340,7 @@ test("a real 'show'/'hide' host message drives the overlay, and a malformed mess
 // ring": exactly one gold sprite set per shown tile, never the blue ring's sprites, never the stroke fallback
 // (glyphs.js's drawGlyphRing).
 
-test("the see-through hook stamps the gold ring sprites at the scene's own radius/rotation, offset by a non-origin tile, and draws no other ring", function () {
+test("the see-through hook stamps the gold then the blue ring sprites at each ring's own radius/rotation, offset by a non-origin tile", function () {
   var page = loadPage({ innerWidth: 1000, innerHeight: 800 });
 
   var sceneProgressCalls = [];
@@ -403,19 +403,32 @@ test("the see-through hook stamps the gold ring sprites at the scene's own radiu
   var blueSet = vm.runInContext("sprites.outlineGlyphs", page.sandbox);
   assert.ok(Array.isArray(goldSet) && goldSet.length > 0, "test setup sanity: the gold ring sprites are baked");
 
-  hookCalls.forEach(function (call, index) {
-    assert.strictEqual(call.stamps.length, goldSet.length,
-      "expected hook call #" + index + " to stamp one sprite per gold ring slot");
-    call.stamps.forEach(function (stamp, i) {
-      assert.strictEqual(stamp.image, goldSet[i].canvas, "hook call #" + index + " stamp #" + i + " is the gold sprite");
-      assert.ok(blueSet.every(function (sprite) { return sprite.canvas !== stamp.image; }), "never a blue ring sprite");
+  assert.ok(Array.isArray(blueSet) && blueSet.length > 0, "test setup sanity: the blue ring sprites are baked");
+  // The blue ring (annulus 3) turns at config.js's own GLYPH_RING_BLUE_ROTATION_SPEED literal (-0.32).
+  var blue = page.sandbox.glyphRingAnnuli(r)[3];
+  var expectedBlueRadius = (blue.innerRadius + blue.outerRadius) / 2;
+  var GLYPH_RING_BLUE_ROTATION_SPEED = -0.32;
+  var expectedBlueRotation = sceneProgress * (Math.PI * 2) * GLYPH_RING_BLUE_ROTATION_SPEED;
+
+  function assertRingStamps(call, index, stamps, set, ringName, radius, rotation) {
+    stamps.forEach(function (stamp, i) {
+      assert.strictEqual(stamp.image, set[i].canvas, "hook call #" + index + " " + ringName + " stamp #" + i + " is the " + ringName + " sprite");
       // CielScenes' script rings lay their glyphs out as justified words: each sprite carries its own ringAngle.
-      assert.strictEqual(typeof goldSet[i].ringAngle, "number", "gold sprite #" + i + " carries its ring angle");
-      var angle = expectedRotation + goldSet[i].ringAngle;
-      assert.ok(Math.abs(stamp.offset.x - (call.offset.x + cx + Math.cos(angle) * expectedRadius)) < 1e-6 &&
-        Math.abs(stamp.offset.y - (call.offset.y + cy + Math.sin(angle) * expectedRadius)) < 1e-6,
-        "hook call #" + index + " stamp #" + i + " sits on the true gold ring at the scene's own rotation");
+      var angle = rotation + (set[i].ringAngle !== undefined ? set[i].ringAngle : (i / set.length) * Math.PI * 2);
+      assert.ok(Math.abs(stamp.offset.x - (call.offset.x + cx + Math.cos(angle) * radius)) < 1e-6 &&
+        Math.abs(stamp.offset.y - (call.offset.y + cy + Math.sin(angle) * radius)) < 1e-6,
+        "hook call #" + index + " " + ringName + " stamp #" + i + " sits on the true " + ringName + " ring at the scene's own rotation");
     });
+  }
+
+  hookCalls.forEach(function (call, index) {
+    assert.strictEqual(call.stamps.length, goldSet.length + blueSet.length,
+      "expected hook call #" + index + " to stamp one sprite per gold ring slot, then one per blue ring slot");
+    goldSet.forEach(function (sprite, i) {
+      assert.strictEqual(typeof sprite.ringAngle, "number", "gold sprite #" + i + " carries its ring angle");
+    });
+    assertRingStamps(call, index, call.stamps.slice(0, goldSet.length), goldSet, "gold", expectedRadius, expectedRotation);
+    assertRingStamps(call, index, call.stamps.slice(goldSet.length), blueSet, "blue", expectedBlueRadius, expectedBlueRotation);
   });
 
   var rects = page.sandbox.tileRects();
